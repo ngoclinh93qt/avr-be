@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+anthropic
+openai
+google-genai
+llama-index
+llama-index-vector-stores-qdrant
+llama-index-embeddings-huggingface
+qdrant-client
+sentence-transformers
+numpy
+python-dotenv
+websockets  # For WebSocket client testing
+

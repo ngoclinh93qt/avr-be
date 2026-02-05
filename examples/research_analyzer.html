@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Research Assistant</title>
+    <style>
+        /* Modern Reset & Base Styles */
+        :root {
+            --primary: #667eea;
+            --secondary: #764ba2;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --glass-bg: rgba(255, 255, 255, 0.95);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: var(--text-main);
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        /* Accessibilty & Utilities */
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+        .hidden { display: none !important; }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Container & Glassmorphism */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid var(--glass-border);
+            overflow: hidden;
+            min-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        header {
+            padding: 20px 30px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .brand h1 { font-size: 1.5rem; color: #1f2937; display: flex; align-items: center; gap: 10px; }
+        .brand p { font-size: 0.9rem; color: var(--text-muted); margin-top: 2px; }
+        .status-badge {
+            font-size: 0.85rem;
+            padding: 5px 12px;
+            border-radius: 20px;
+            background: #f3f4f6;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .status-badge.connected { background: #d1fae5; color: #065f46; }
+        .status-badge.analyzing { background: #dbeafe; color: #1e40af; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+        .dot.pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        /* Main Content Area */
+        main { padding: 30px; flex: 1; display: flex; flex-direction: column; gap: 30px; }
+
+        /* Input Section */
+        .input-group { position: relative; }
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid #e5e7eb;
+            font-size: 1rem;
+            resize: vertical;
+            transition: all 0.3s;
+            background: #fafafa;
+        }
+        textarea:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1); }
+        .input-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+        .char-count { font-size: 0.85rem; color: var(--text-muted); }
+        
+        .controls { display: flex; gap: 10px; align-items: center; }
+        select { padding: 8px 12px; border-radius: 8px; border: 1px solid #e5e7eb; background: white; cursor: pointer; }
+        button {
+            padding: 10px 24px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary { background: linear-gradient(to right, var(--primary), var(--secondary)); color: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 8px -1px rgba(0,0,0,0.15); }
+        .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; filter: grayscale(1); }
+        .btn-ghost { background: transparent; color: var(--text-muted); }
+        .btn-ghost:hover { background: #f3f4f6; color: var(--danger); }
+
+        /* Progress Section */
+        .progress-container { background: white; border-radius: 16px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #f3f4f6; }
+        .progress-bar-bg { height: 8px; background: #eaecf0; border-radius: 4px; overflow: hidden; margin-bottom: 20px; }
+        .progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(to right, var(--primary), var(--success)); transition: width 0.5s ease; }
+        .steps { display: flex; justify-content: space-between; position: relative; }
+        .step { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 0.8rem; color: #9ca3af; z-index: 1; position: relative; }
+        .step.active { color: var(--primary); font-weight: 600; }
+        .step.completed { color: var(--success); }
+        .step-icon { width: 32px; height: 32px; background: white; border: 2px solid #e5e7eb; border-radius: 50%; display: flex; alignItems: center; justify-content: center; font-size: 14px; transition: all 0.3s; }
+        .step.active .step-icon { border-color: var(--primary); color: var(--primary); box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1); transform: scale(1.1); }
+        .step.completed .step-icon { background: var(--success); border-color: var(--success); color: white; }
+
+        /* Results Tabs */
+        .tabs { display: flex; gap: 5px; border-bottom: 2px solid #e5e7eb; margin-bottom: 20px; overflow-x: auto; padding-bottom: 2px; }
+        .tab-btn {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -4px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: var(--primary); }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Card Styles */
+        .card { background: white; border-radius: 12px; border: 1px solid #e5e7eb; padding: 20px; margin-bottom: 20px; }
+        .card:hover { border-color: #d1d5db; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+
+        /* Paper Card specific */
+        .paper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
+        .paper-card { display: flex; flex-direction: column; gap: 10px; }
+        .similarity-badge { align-self: flex-start; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+        .sim-high { background: #dcfce7; color: #166534; }
+        .sim-med { background: #fef3c7; color: #92400e; }
+        .sim-low { background: #f3f4f6; color: #4b5563; }
+        .paper-title { font-weight: 700; color: #1f2937; line-height: 1.4; text-decoration: none; }
+        .paper-title:hover { color: var(--primary); text-decoration: underline; }
+        .paper-meta { font-size: 0.85rem; color: var(--text-muted); }
+        .paper-links { display: flex; gap: 10px; margin-top: auto; padding-top: 10px; }
+        .link-btn { font-size: 0.75rem; padding: 4px 10px; border-radius: 4px; border: 1px solid #e5e7eb; text-decoration: none; color: #374151; transition: all 0.2s; }
+        .link-btn:hover { background: #f9fafb; border-color: #d1d5db; }
+
+        /* Novelty Gauge */
+        .gauge-container { display: flex; flex-direction: column; align-items: center; padding: 30px; text-align: center; }
+        .gauge-circle { width: 150px; height: 150px; border-radius: 50%; background: conic-gradient(var(--score-color) var(--score-deg), #f3f4f6 0deg); display: flex; align-items: center; justify-content: center; position: relative; margin-bottom: 20px; }
+        .gauge-inner { width: 120px; height: 120px; background: white; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .score-num { font-size: 2.5rem; font-weight: 800; line-height: 1; }
+        .score-label { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-top: 5px; }
+
+        /* Gaps & SWOT */
+        .gap-item { border-left: 4px solid var(--primary); padding-left: 15px; margin-bottom: 20px; }
+        .gap-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .gap-badges { display: flex; gap: 8px; }
+        .badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; background: #f3f4f6; color: #4b5563; }
+        .badge.high { background: #fee2e2; color: #991b1b; }
+        
+        .swot-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        @media (max-width: 768px) { .swot-grid, .paper-grid { grid-template-columns: 1fr; } }
+        .swot-box { padding: 20px; border: 1px solid #e5e7eb; border-top-width: 4px; border-radius: 8px; background: white; }
+        .swot-box.s { border-top-color: var(--success); }
+        .swot-box.w { border-top-color: var(--danger); }
+        .swot-box.o { border-top-color: var(--primary); }
+        .swot-box.t { border-top-color: var(--warning); }
+        .swot-list { list-style: none; margin-top: 10px; }
+        .swot-list li { margin-bottom: 8px; position: relative; padding-left: 20px; }
+        .swot-list li::before { content: "•"; position: absolute; left: 0; color: #9ca3af; }
+
+        /* Modal */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+        .modal-overlay.open { opacity: 1; pointer-events: auto; }
+        .modal-card { background: white; width: 90%; max-width: 600px; border-radius: 16px; padding: 30px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); transform: scale(0.95); transition: transform 0.3s; max-height: 90vh; overflow-y: auto; }
+        .modal-overlay.open .modal-card { transform: scale(1); }
+        .question-item { margin-bottom: 20px; background: #f9fafb; padding: 15px; border-radius: 8px; }
+        .q-label { display: block; font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; }
+        .text-input { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div class="brand">
+            <h1><span>🔬</span> AI Research Assistant</h1>
+            <p>Analyze novelty and get publishing recommendations</p>
+        </div>
+        <div class="status-badge" id="connStatus">
+            <div class="dot" id="connDot"></div>
+            <span id="connText">Disconnected</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Input Section -->
+        <section id="inputSection" class="fade-in">
+            <div class="input-group">
+                <textarea id="abstractInput" placeholder="Paste your research abstract here (min 100 characters)..."></textarea>
+            </div>
+            <div class="input-footer">
+                <div class="char-count"><span id="charCount">0</span>/5000 chars</div>
+                <div class="controls">
+                    <select id="langSelect">
+                        <option value="auto">Auto-detect Language</option>
+                        <option value="en">English</option>
+                        <option value="vi">Vietnamese</option>
+                    </select>
+                    <button id="clearBtn" class="btn-ghost">🗑️ Clear</button>
+                    <button id="analyzeBtn" class="btn-primary" disabled>🚀 Analyze Research</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Progress Section (Hidden initially) -->
+        <section id="progressSection" class="progress-container hidden">
+            <div class="progress-bar-bg">
+                <div id="progressBar" class="progress-bar-fill"></div>
+            </div>
+            <div class="steps">
+                <!-- Icons added via JS or hardcoded -->
+                <div class="step" data-step="assessing">
+                    <div class="step-icon">📋</div>
+                    <span>Assess</span>
+                </div>
+                <div class="step" data-step="clarification">
+                    <div class="step-icon">❓</div>
+                    <span>Clarify</span>
+                </div>
+                <div class="step" data-step="research">
+                    <div class="step-icon">🔍</div>
+                    <span>Research</span>
+                </div>
+                <div class="step" data-step="novelty">
+                    <div class="step-icon">📊</div>
+                    <span>Novelty</span>
+                </div>
+                <div class="step" data-step="gaps">
+                    <div class="step-icon">🎯</div>
+                    <span>Gaps</span>
+                </div>
+                <div class="step" data-step="swot">
+                    <div class="step-icon">⚖️</div>
+                    <span>SWOT</span>
+                </div>
+                <div class="step" data-step="publishability">
+                    <div class="step-icon">📈</div>
+                    <span>Publish</span>
+                </div>
+            </div>
+            <div style="text-align: center; margin-top: 15px; font-weight: 500; color: var(--text-muted);">
+                <span id="statusMessage">Initializing...</span>
+            </div>
+        </section>
+
+        <!-- Results Section (Hidden initially) -->
+        <section id="resultsSection" class="hidden">
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="research">📄 Research Papers</button>
+                <button class="tab-btn" data-tab="novelty">📊 Novelty</button>
+                <button class="tab-btn" data-tab="gaps">🎯 Gaps</button>
+                <button class="tab-btn" data-tab="swot">⚖️ SWOT</button>
+                <button class="tab-btn" data-tab="recommendations">💡 Recommendations</button>
+            </div>
+
+            <!-- TAB 1: Research -->
+            <div id="tab-research" class="tab-content active fade-in">
+                <div id="papersList" class="paper-grid"></div>
+            </div>
+
+            <!-- TAB 2: Novelty -->
+            <div id="tab-novelty" class="tab-content fade-in">
+                <div class="gauge-container">
+                    <div class="gauge-circle" id="noveltyGauge">
+                        <div class="gauge-inner">
+                            <span class="score-num" id="noveltyScore">0</span>
+                            <span class="score-label" id="noveltyLevel">Low</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Analysis Reasoning</h3>
+                    <p id="noveltyReasoning" style="margin-top: 10px; color: #4b5563;"></p>
+                </div>
+                <div style="margin-top: 20px;">
+                    <h3>Most Similar Papers</h3>
+                    <div id="similarPapersList" style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;"></div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Gaps -->
+            <div id="tab-gaps" class="tab-content fade-in">
+                <div id="gapsList"></div>
+            </div>
+
+            <!-- TAB 4: SWOT -->
+            <div id="tab-swot" class="tab-content fade-in">
+                <div class="swot-grid">
+                    <div class="swot-box s"><h4>💪 Strengths</h4><ul id="swotS" class="swot-list"></ul></div>
+                    <div class="swot-box w"><h4>⚠️ Weaknesses</h4><ul id="swotW" class="swot-list"></ul></div>
+                    <div class="swot-box o"><h4>🌟 Opportunities</h4><ul id="swotO" class="swot-list"></ul></div>
+                    <div class="swot-box t"><h4>⚡ Threats</h4><ul id="swotT" class="swot-list"></ul></div>
+                </div>
+            </div>
+
+            <!-- TAB 5: Recommendations -->
+            <div id="tab-recommendations" class="tab-content fade-in">
+                <div class="card" style="border-left: 5px solid var(--primary);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3>Publishability Prediction</h3>
+                        <div class="badge" id="pubLevel" style="font-size: 1rem; padding: 5px 15px;">MEDIUM</div>
+                    </div>
+                    <p><strong>Target Tier:</strong> <span id="pubTier">Q2</span></p>
+                    <p style="margin-top: 10px;" id="pubReasoning"></p>
+                </div>
+                <h3 style="margin: 20px 0 10px;">Suggestions</h3>
+                <div id="suggestionsList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<!-- Clarification Modal -->
+<div id="clarificationModal" class="modal-overlay">
+    <div class="modal-card">
+        <h2 style="margin-bottom: 10px;">❓ Clarification Needed</h2>
+        <p id="clarificationIntro" style="margin-bottom: 20px; color: var(--text-muted);"></p>
+        <div id="questionsContainer"></div>
+        <button id="submitAnswersBtn" class="btn-primary" style="width: 100%; justify-content: center; margin-top: 20px;">Submit Answers</button>
+    </div>
+</div>
+
+<script>
+    // --- State ---
+    let ws = null;
+    let sessionId = null;
+    let currentQuestions = [];
+    let isAnalyzing = false;
+
+    // --- DOM Elements ---
+    const els = {
+        abstract: document.getElementById('abstractInput'),
+        charCount: document.getElementById('charCount'),
+        analyzeBtn: document.getElementById('analyzeBtn'),
+        clearBtn: document.getElementById('clearBtn'),
+        connStatus: document.getElementById('connStatus'),
+        connDot: document.getElementById('connDot'),
+        connText: document.getElementById('connText'),
+        progressSection: document.getElementById('progressSection'),
+        progressBar: document.getElementById('progressBar'),
+        statusMessage: document.getElementById('statusMessage'),
+        modal: document.getElementById('clarificationModal'),
+        questionsContainer: document.getElementById('questionsContainer'),
+        submitAnswersBtn: document.getElementById('submitAnswersBtn'),
+        resultsSection: document.getElementById('resultsSection'),
+        tabs: document.querySelectorAll('.tab-btn'),
+        tabContents: document.querySelectorAll('.tab-content')
+    };
+
+    // --- Formatters ---
+    const getSimColor = (sim) => {
+        if (sim >= 80) return 'sim-high';
+        if (sim >= 60) return 'sim-med';
+        return 'sim-low';
+    };
+
+    // --- WebSocket Logic ---
+    function connect() {
+        if (ws && ws.readyState === WebSocket.OPEN) return;
+
+        updateConnectionStatus('connecting');
+        ws = new WebSocket('ws://localhost:8000/api/v1/ws/topic/analyze');
+
+        ws.onopen = () => {
+            updateConnectionStatus('connected');
+            if (isAnalyzing && els.abstract.value) {
+                // send message if we were trying to analyze
+                sendAnalysisRequest();
+            }
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            handleMessage(data);
+        };
+
+        ws.onclose = () => {
+            updateConnectionStatus('disconnected');
+            // Auto reconnect if analyzing
+            if (isAnalyzing) setTimeout(connect, 3000);
+        };
+
+        ws.onerror = (err) => {
+            console.error("WS Error", err);
+            updateConnectionStatus('error');
+        };
+    }
+
+    function sendAnalysisRequest() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            connect();
+            return;
+        }
+        
+        ws.send(JSON.stringify({
+            type: "user_message",
+            abstract: els.abstract.value,
+            language: document.getElementById('langSelect').value
+        }));
+        
+        isAnalyzing = true;
+        els.progressSection.classList.remove('hidden');
+        els.resultsSection.classList.add('hidden');
+        resetProgress();
+        els.analyzeBtn.disabled = true;
+    }
+
+    function handleMessage(data) {
+        console.log("Msg:", data.type, data);
+        switch(data.type) {
+            case 'session_started':
+                sessionId = data.session_id;
+                break;
+            case 'agent_thinking':
+                updateProgress(data.progress, data.message, data.step);
+                break;
+            case 'clarification_needed':
+                showClarificationModal(data);
+                break;
+            case 'analysis_progress':
+                updateProgress(data.progress, data.message, data.step);
+                break;
+            case 'analysis_complete':
+                updateProgress(100, "Analysis Complete", "complete");
+                isAnalyzing = false;
+                els.analyzeBtn.disabled = false;
+                renderResults(data.result);
+                // Wait a bit before showing results to let progress hit 100%
+                setTimeout(() => {
+                    els.resultsSection.classList.remove('hidden');
+                    els.resultsSection.scrollIntoView({ behavior: 'smooth' });
+                }, 800);
+                break;
+            case 'error':
+                alert("Error: " + data.error);
+                isAnalyzing = false;
+                els.analyzeBtn.disabled = false;
+                break;
+        }
+    }
+
+    // --- UI Updaters ---
+
+    function updateConnectionStatus(status) {
+        els.connStatus.className = `status-badge ${status}`;
+        els.connText.innerText = status.charAt(0).toUpperCase() + status.slice(1);
+        els.connDot.className = `dot ${status === 'analyzing' || status === 'connecting' ? 'pulse' : ''}`;
+        if (status === 'connected') els.connDot.style.color = '#10b981';
+        else if (status === 'disconnected') els.connDot.style.color = '#9ca3af';
+        else if (status === 'error') els.connDot.style.color = '#ef4444';
+    }
+
+    function updateProgress(pct, msg, step) {
+        els.progressBar.style.width = `${pct}%`;
+        els.statusMessage.innerText = msg;
+        
+        // Update step icons
+        document.querySelectorAll('.step').forEach(el => {
+            // logic to highlight current step based on approximate progress mapping
+            // Simpler: use the 'step' field if available to highlight active
+            el.classList.remove('active');
+            if (el.dataset.step === step || (step === 'complete')) {
+                 el.classList.add('active');
+            }
+            // Mark completed steps (approximation)
+            // Ideally we track visited steps
+        });
+    }
+
+    function resetProgress() {
+        els.progressBar.style.width = '0%';
+        els.statusMessage.innerText = "Starting...";
+    }
+
+    // --- Clarification Modal ---
+    function showClarificationModal(data) {
+        currentQuestions = data.questions;
+        document.getElementById('clarificationIntro').innerText = data.intro_message;
+        els.questionsContainer.innerHTML = '';
+        
+        data.questions.forEach((q, idx) => {
+            const div = document.createElement('div');
+            div.className = 'question-item';
+            div.innerHTML = `
+                <label class="q-label">
+                    <span>${idx + 1}. ${q.question}</span>
+                    ${q.priority === 1 ? '<span class="badge high">Critical</span>' : ''}
+                </label>
+                <input type="text" class="text-input" id="q-${q.id}" placeholder="Type your answer...">
+            `;
+            els.questionsContainer.appendChild(div);
+        });
+
+        els.modal.classList.add('open');
+    }
+
+    els.submitAnswersBtn.addEventListener('click', () => {
+        // Collect answers
+        let allAnswered = true;
+        
+        // Send answers one by one as per API flow (or could be batched if API supported it, but flow says single user_answer messages usually)
+        // Verify flow: hook usually sends one by one. Let's send one by one.
+        
+        // Actually, the new backend might expect multiple? The message flow says: 
+        // 5. Client -> Server: {"type": "user_answer", ...}
+        // Let's loop.
+        
+        currentQuestions.forEach(q => {
+            const input = document.getElementById(`q-${q.id}`);
+            const val = input.value.trim();
+            if (!val) allAnswered = false; 
+            else {
+                 ws.send(JSON.stringify({
+                     type: 'user_answer',
+                     question_id: q.id,
+                     answer: val,
+                     session_id: sessionId
+                 }));
+            }
+        });
+
+        if (!allAnswered) {
+            alert("Please answer all questions");
+            return;
+        }
+
+        els.modal.classList.remove('open');
+    });
+
+    // --- Render Results ---
+    function renderResults(res) {
+        // Tab 1: Papers
+        const papers = res.research?.top_papers || res.research?.papers || []; // Handle both schemas
+        const papersList = document.getElementById('papersList');
+        papersList.innerHTML = papers.map(p => `
+            <div class="card paper-card">
+                <div style="display:flex; justify-content:space-between">
+                     <span class="similarity-badge ${getSimColor(p.similarity * 100)}">${Math.round(p.similarity * 100)}% Match</span>
+                </div>
+                <a href="${p.url || '#'}" target="_blank" class="paper-title">${p.title}</a>
+                <div class="paper-meta">${p.authors.slice(0, 3).join(', ')} • ${p.year}</div>
+                <p style="font-size: 0.9rem; color: #4b5563; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">${p.abstract || 'No abstract available'}</p>
+                <div class="paper-links">
+                    <a href="#" class="link-btn">PubMed: ${p.pmid}</a>
+                </div>
+            </div>
+        `).join('');
+
+        // Tab 2: Novelty
+        const score = res.novelty?.score || 0;
+        document.getElementById('noveltyScore').innerText = score;
+        document.getElementById('noveltyLevel').innerText = score > 60 ? 'High' : (score > 30 ? 'Medium' : 'Low');
+        document.getElementById('noveltyGauge').style.setProperty('--score-deg', `${score * 3.6}deg`);
+        document.getElementById('noveltyGauge').style.setProperty('--score-color', score > 60 ? '#10b981' : (score > 30 ? '#f59e0b' : '#ef4444'));
+        document.getElementById('noveltyReasoning').innerText = res.novelty?.reasoning || 'No analysis available.';
+        
+        // Similar papers in Novelty tab
+        const simPapers = res.novelty?.most_similar_papers || [];
+        document.getElementById('similarPapersList').innerHTML = simPapers.map(p => `
+            <div style="padding: 10px; background: #f9fafb; border-radius: 6px; font-size: 0.9rem;">
+                <strong>${p.title}</strong>
+                <div style="font-size: 0.8rem; color: #6b7280; margin-top: 2px;">Sim: ${p.similarity}</div>
+            </div>
+        `).join('');
+
+
+        // Tab 3: Gaps
+        const gapsList = document.getElementById('gapsList');
+        gapsList.innerHTML = (res.gaps || []).map(g => `
+            <div class="gap-item">
+                <div class="gap-header">
+                    <span style="font-weight: 600;">${g.type} Gap</span>
+                    <span class="badge ${g.priority === 'high' ? 'high' : ''}">${g.priority || 'Medium'}</span>
+                </div>
+                <p>${g.description}</p>
+            </div>
+        `).join('');
+
+        // Tab 4: SWOT
+        const renderLists = (arr, id) => {
+            document.getElementById(id).innerHTML = (arr || []).map(i => {
+                // Handle objects (new schema) or strings
+                const txt = typeof i === 'string' ? i : i.point; 
+                return `<li>${txt}</li>`;
+            }).join('');
+        };
+        renderLists(res.swot?.strengths, 'swotS');
+        renderLists(res.swot?.weaknesses, 'swotW');
+        renderLists(res.swot?.opportunities, 'swotO');
+        renderLists(res.swot?.threats, 'swotT');
+
+        // Tab 5: Recommendations
+        const pub = res.publishability || {};
+        document.getElementById('pubLevel').innerText = pub.level || 'Unknown';
+        document.getElementById('pubTier').innerText = pub.target_tier || 'N/A';
+        document.getElementById('pubReasoning').innerText = pub.reasoning || '';
+        if(pub.level === 'HIGH') document.getElementById('pubLevel').style.cssText = 'background: #dcfce7; color: #166534;';
+        
+        const suggList = document.getElementById('suggestionsList');
+        suggList.innerHTML = (res.suggestions || []).map(s => `
+            <div class="card" style="margin-bottom: 0; padding: 15px;">
+                <div style="font-weight: 600; margin-bottom: 5px;">${s.action}</div>
+                <div class="gap-badges">
+                    <span class="badge">Impact: ${s.impact}</span>
+                    <span class="badge">Effort: ${s.effort}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // --- Event Listeners ---
+    els.abstract.addEventListener('input', (e) => {
+        const len = e.target.value.length;
+        els.charCount.innerText = len;
+        els.analyzeBtn.disabled = len < 100;
+    });
+
+    els.clearBtn.addEventListener('click', () => {
+        els.abstract.value = '';
+        els.charCount.innerText = '0';
+        els.analyzeBtn.disabled = true;
+        els.resultsSection.classList.add('hidden');
+        els.progressSection.classList.add('hidden');
+    });
+
+    els.analyzeBtn.addEventListener('click', sendAnalysisRequest);
+
+    els.tabs.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Remove active from all
+            els.tabs.forEach(b => b.classList.remove('active'));
+            els.tabContents.forEach(c => c.classList.remove('active'));
+            
+            // Add to clicked
+            btn.classList.add('active');
+            document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+        });
+    });
+
+    // Init
+    window.addEventListener('load', () => {
+        // Pre-fill text for demo
+        // els.abstract.value = "Deep learning applications in genomic...";
+    });
+
+</script>
+</body>
+</html>

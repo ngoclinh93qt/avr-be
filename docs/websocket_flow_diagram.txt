@@ -1,0 +1,316 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                WebSocket Topic Analyzer - Complete Flow                   ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────┐                                          ┌──────────────┐
+│   CLIENT    │                                          │    SERVER    │
+│  (Browser/  │                                          │   (FastAPI)  │
+│    App)     │                                          │              │
+└──────┬──────┘                                          └──────┬───────┘
+       │                                                        │
+       │ ① WebSocket Connect                                   │
+       ├───────────────────────────────────────────────────────>│
+       │   ws://localhost:8000/api/v1/ws/topic/analyze         │
+       │                                                        │
+       │ ② Connection Accepted                                 │
+       │<───────────────────────────────────────────────────────┤
+       │                                                        │
+       │ ③ Send Abstract                                       │
+       ├───────────────────────────────────────────────────────>│
+       │ {                                                      │
+       │   "type": "user_message",                            ├─┐
+       │   "abstract": "...",                                 │ │ Create
+       │   "language": "en"                                   │ │ Session
+       │ }                                                      │<┘
+       │                                                        │
+       │ ④ Session Started                                     │
+       │<───────────────────────────────────────────────────────┤
+       │ {"type": "session_started", "session_id": "abc123"}   │
+       │                                                        │
+       │                                                       ├─┐
+       │                                                       │ │ Assess
+       │                                                       │ │ Complete-
+       │                                                       │ │ ness
+       │                                                       │<┘
+       │ ⑤ Agent Thinking                                      │
+       │<───────────────────────────────────────────────────────┤
+       │ {"type": "agent_thinking",                            │
+       │  "message": "Assessing...", "progress": 10}           │
+       │                                                        │
+       │<───────────────────────────────────────────────────────┤
+       │ {"message": "45% complete", "progress": 20}           │
+       │                                                        │
+       │                                                        │
+       ┊ ╔═══════════════════════════════════════════════╗     ┊
+       ┊ ║   IF ABSTRACT IS INCOMPLETE (<60%)            ║     ┊
+       ┊ ╚═══════════════════════════════════════════════╝     ┊
+       │                                                       ├─┐
+       │                                                       │ │ Generate
+       │                                                       │ │ Questions
+       │                                                       │<┘
+       │ ⑥ Clarification Needed                                │
+       │<───────────────────────────────────────────────────────┤
+       │ {                                                      │
+       │   "type": "clarification_needed",                     │
+       │   "intro_message": "Need more info:",                 │
+       │   "questions": [                                      │
+       │     {"id": "methodology",                             │
+       │      "question": "What ML techniques?",               │
+       │      "priority": 1},                                  │
+       │     {"id": "population",                              │
+       │      "question": "What patient group?",               │
+       │      "priority": 1}                                   │
+       │   ]                                                    │
+       │ }                                                      │
+       │                                                        │
+       ┊ ┌──────────────────────────────────┐                  ┊
+       ┊ │  USER ANSWERS QUESTIONS IN UI    │                  ┊
+       ┊ └──────────────────────────────────┘                  ┊
+       │                                                        │
+       │ ⑦ Answer Question 1                                   │
+       ├───────────────────────────────────────────────────────>│
+       │ {                                                      │
+       │   "type": "user_answer",                             ├─┐
+       │   "question_id": "methodology",                      │ │ Store
+       │   "answer": "Random forests",                        │ │ Answer
+       │   "session_id": "abc123"                             │<┘
+       │ }                                                      │
+       │                                                        │
+       │ ⑧ Answer Question 2                                   │
+       ├───────────────────────────────────────────────────────>│
+       │ {                                                      │
+       │   "type": "user_answer",                             ├─┐
+       │   "question_id": "population",                       │ │ Store
+       │   "answer": "ICU patients",                          │ │ Answer
+       │   "session_id": "abc123"                             │<┘
+       │ }                                                      │
+       │                                                        │
+       │                                                       ├─┐
+       │                                                       │ │ Enrich
+       │                                                       │ │ Abstract
+       │                                                       │<┘
+       │ ⑨ Enriching Abstract                                  │
+       │<───────────────────────────────────────────────────────┤
+       │ {"message": "Enriching...", "progress": 40}           │
+       │                                                        │
+       ┊ ╔═══════════════════════════════════════════════╗     ┊
+       ┊ ║   END IF - CONTINUE WITH ANALYSIS             ║     ┊
+       ┊ ╚═══════════════════════════════════════════════╝     ┊
+       │                                                        │
+       │                                                       ├─┐
+       │                                                       │ │ Score
+       │                                                       │ │ Novelty
+       │                                                       │<┘
+       │ ⑩ Analysis Progress - Novelty                         │
+       │<───────────────────────────────────────────────────────┤
+       │ {                                                      │
+       │   "type": "analysis_progress",                        │
+       │   "step": "novelty",                                  │
+       │   "message": "Analyzing novelty...",                  │
+       │   "progress": 60,                                     │
+       │   "partial_result": {"novelty_score": 72}             │
+       │ }                                                      │
+       │                                                        │
+       │                                                       ├─┐
+       │                                                       │ │ Analyze
+       │                                                       │ │ Gaps
+       │                                                       │<┘
+       │ ⑪ Analysis Progress - Gaps                            │
+       │<───────────────────────────────────────────────────────┤
+       │ {                                                      │
+       │   "step": "gaps",                                     │
+       │   "message": "5 gaps identified",                     │
+       │   "progress": 70                                      │
+       │ }                                                      │
+       │                                                        │
+       │                                                       ├─┐
+       │                                                       │ │ SWOT
+       │                                                       │ │ Analysis
+       │                                                       │<┘
+       │ ⑫ Analysis Progress - SWOT                            │
+       │<───────────────────────────────────────────────────────┤
+       │ {"step": "swot", "progress": 80}                      │
+       │                                                        │
+       │                                                       ├─┐
+       │                                                       │ │ Predict
+       │                                                       │ │ Publish-
+       │                                                       │ │ ability
+       │                                                       │<┘
+       │ ⑬ Analysis Progress - Publishability                  │
+       │<───────────────────────────────────────────────────────┤
+       │ {"step": "publishability", "progress": 90}            │
+       │                                                        │
+       │                                                       ├─┐
+       │                                                       │ │ Generate
+       │                                                       │ │ Sugges-
+       │                                                       │ │ tions
+       │                                                       │<┘
+       │ ⑭ Analysis Progress - Suggestions                     │
+       │<───────────────────────────────────────────────────────┤
+       │ {"step": "suggestions", "progress": 95}               │
+       │                                                        │
+       │                                                       ├─┐
+       │                                                       │ │ Aggregate
+       │                                                       │ │ Results
+       │                                                       │<┘
+       │ ⑮ Analysis Complete                                   │
+       │<───────────────────────────────────────────────────────┤
+       │ {                                                      │
+       │   "type": "analysis_complete",                        │
+       │   "result": {                                         │
+       │     "novelty": {                                      │
+       │       "score": 72,                                    │
+       │       "reasoning": "...",                             │
+       │       "most_similar_paper": "..."                     │
+       │     },                                                 │
+       │     "gaps": [...],                                    │
+       │     "swot": {...},                                    │
+       │     "publishability": {...},                          │
+       │     "suggestions": [...]                              │
+       │   },                                                   │
+       │   "processing_time_seconds": 45.2                     │
+       │ }                                                      │
+       │                                                        │
+       │ ⑯ Close Connection                                    │
+       ├───────────────────────────────────────────────────────>│
+       │                                                       ├─┐
+       │                                                       │ │ Cleanup
+       │                                                       │ │ Session
+       │                                                       │<┘
+       │ Connection Closed                                     │
+       │<───────────────────────────────────────────────────────┤
+       │                                                        │
+       ▼                                                        ▼
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                         KEY MILESTONES & PROGRESS
+
+═══════════════════════════════════════════════════════════════════════════
+
+  0% ├────┤ WebSocket Connection
+ 10% ├────┤ Assessment Started
+ 20% ├────┤ Completeness Checked
+     │
+     ├──► IF INCOMPLETE:
+ 30% │    ├────┤ Questions Generated
+ 40% │    ├────┤ Answers Received & Enrichment
+     │    │
+     └──► ELSE: Skip to 50%
+     │
+ 50% ├────┤ Analysis Started
+ 60% ├────┤ Novelty Scoring
+ 70% ├────┤ Gap Analysis
+ 80% ├────┤ SWOT Analysis
+ 90% ├────┤ Publishability Prediction
+ 95% ├────┤ Suggestions Generated
+100% └────┤ Complete!
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                         MESSAGE TYPE SUMMARY
+
+═══════════════════════════════════════════════════════════════════════════
+
+CLIENT → SERVER                    SERVER → CLIENT
+───────────────                    ───────────────
+user_message                       session_started
+  └─ Initial abstract              agent_thinking
+                                     └─ Status updates (10-40%)
+user_answer                        clarification_needed
+  └─ Answer questions                └─ Questions list
+                                   analysis_progress
+                                     └─ Step updates (50-95%)
+                                   analysis_complete
+                                     └─ Final results (100%)
+                                   error
+                                     └─ Error messages
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                         STATE TRANSITIONS
+
+═══════════════════════════════════════════════════════════════════════════
+
+┌──────────────┐
+│ DISCONNECTED │
+└───────┬──────┘
+        │
+        │ connect()
+        ▼
+┌──────────────┐
+│  CONNECTED   │◄────────────────┐
+└───────┬──────┘                 │
+        │                        │
+        │ send abstract          │
+        ▼                        │
+┌──────────────┐                 │
+│  ASSESSING   │                 │
+└───────┬──────┘                 │
+        │                        │
+        ├───► IF complete ────────┘
+        │
+        │ IF incomplete
+        ▼
+┌──────────────┐
+│  CLARIFYING  │
+└───────┬──────┘
+        │
+        │ all answers received
+        ▼
+┌──────────────┐
+│  ENRICHING   │
+└───────┬──────┘
+        │
+        ▼
+┌──────────────┐
+│  ANALYZING   │
+└───────┬──────┘
+        │
+        │ analysis complete
+        ▼
+┌──────────────┐
+│   COMPLETE   │
+└───────┬──────┘
+        │
+        │ close()
+        ▼
+┌──────────────┐
+│ DISCONNECTED │
+└──────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                         ERROR HANDLING
+
+═══════════════════════════════════════════════════════════════════════════
+
+At any point, if an error occurs:
+
+┌─────────────┐
+│ ERROR EVENT │
+└──────┬──────┘
+       │
+       ├──► recoverable = true
+       │    ├─ Send error message to client
+       │    ├─ Keep connection open
+       │    └─ Wait for retry
+       │
+       └──► recoverable = false
+            ├─ Send error message to client
+            ├─ Close connection
+            └─ Cleanup session
+
+Common Errors:
+• Abstract too short (<10 chars)
+• Invalid JSON message
+• LLM API failure
+• Session not found
+• Unexpected exception
+
+
+═══════════════════════════════════════════════════════════════════════════

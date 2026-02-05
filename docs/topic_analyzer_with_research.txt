@@ -1,0 +1,327 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║        Topic Analyzer with Deep Research Agent - Complete Flow            ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+Input: User Abstract
+       │
+       ▼
+┌─────────────────────────────────────────────────────┐
+│  STEP 1: INPUT CLARIFICATION                        │
+│  • assess_completeness() → PICO + 5W1H             │
+│  • If <60%: generate_questions()                   │
+│  • User answers → smart_inference()                │
+│  • Output: Enriched Abstract                       │
+└──────────────┬──────────────────────────────────────┘
+               │
+               ▼
+         [Enriched Abstract]
+               │
+               ▼
+┌─────────────────────────────────────────────────────┐
+│  STEP 2: DEEP RESEARCH AGENT 🆕                     │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  ┌──────────────────────────────────┐               │
+│  │ 2a. Keyword Extraction           │               │
+│  │     • LLM or rule-based          │               │
+│  │     • Extract 5 medical terms    │               │
+│  └──────────────┬───────────────────┘               │
+│                 │                                    │
+│                 ▼                                    │
+│  ┌──────────────────────────────────┐               │
+│  │ 2b. PubMed Title Search          │               │
+│  │     • Query: keywords[Title]     │               │
+│  │     • Get ~500 papers (2020-25)  │               │
+│  │     • Rate limit: 3 req/s        │               │
+│  └──────────────┬───────────────────┘               │
+│                 │                                    │
+│                 ▼                                    │
+│  ┌──────────────────────────────────┐               │
+│  │ 2c. Title Ranking                │               │
+│  │     • Embed abstract & titles    │               │
+│  │     • Cosine similarity          │               │
+│  │     • Filter to top 50           │               │
+│  └──────────────┬───────────────────┘               │
+│                 │                                    │
+│                 ▼                                    │
+│  ┌──────────────────────────────────┐               │
+│  │ 2d. Fetch Abstracts (batch)      │               │
+│  │     • Get full records for 50    │               │
+│  │     • Parse XML                  │               │
+│  └──────────────┬───────────────────┘               │
+│                 │                                    │
+│                 ▼                                    │
+│  ┌──────────────────────────────────┐               │
+│  │ 2e. Abstract Ranking             │               │
+│  │     • Embed all abstracts        │               │
+│  │     • Cosine similarity          │               │
+│  │     • Return top 20 papers       │               │
+│  └──────────────┬───────────────────┘               │
+│                 │                                    │
+└─────────────────┼────────────────────────────────────┘
+                  │
+                  │ [20 Real Papers from PubMed]
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────┐
+│  STEP 3: ENHANCED NOVELTY SCORING 🔄                │
+│  ─────────────────────────────────────────────────  │
+│  • score_novelty() (LLM analysis)                   │
+│  • Enhanced with REAL papers:                       │
+│    ├─ most_similar_papers (top 3)                   │
+│    ├─ Citations with PMID/DOI                       │
+│    └─ Similarity scores (0-1)                       │
+│                                                      │
+│  Output:                                             │
+│    {                                                 │
+│      novelty_score: 68,                             │
+│      most_similar_papers: [                         │
+│        {title, authors, year, pmid, similarity}     │
+│      ]                                               │
+│    }                                                 │
+└──────────────┬──────────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────┐
+│  STEP 4: ENHANCED GAP ANALYSIS 🔄                   │
+│  ─────────────────────────────────────────────────  │
+│  • analyze_gaps() (LLM analysis)                    │
+│  • Enhanced with EVIDENCE:                          │
+│    └─ evidence_from_literature (citations)          │
+│                                                      │
+│  Output:                                             │
+│    {                                                 │
+│      gaps: [                                         │
+│        {type, description, priority}                │
+│      ],                                              │
+│      evidence_from_literature: [                    │
+│        "Smith et al. (2024): Title..."              │
+│      ]                                               │
+│    }                                                 │
+└──────────────┬──────────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────┐
+│  STEP 5: SWOT ANALYSIS (with real data)            │
+│  ─────────────────────────────────────────────────  │
+│  • perform_swot()                                    │
+│  • Input: novelty_score, num_similar (REAL count)  │
+│  • Output: strengths, weaknesses,                   │
+│            opportunities, threats                    │
+└──────────────┬──────────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────┐
+│  STEP 6: PUBLISHABILITY PREDICTION                  │
+│  ─────────────────────────────────────────────────  │
+│  • predict_publishability()                         │
+│  • Input: novelty, gaps, strengths, weaknesses      │
+│  • Output: level, tier, confidence, reasoning       │
+└──────────────┬──────────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────┐
+│  STEP 7: IMPROVEMENT SUGGESTIONS                    │
+│  ─────────────────────────────────────────────────  │
+│  • suggest_improvements()                           │
+│  • Input: novelty, weaknesses, target_tier          │
+│  • Output: suggestions, quick_wins, long_term       │
+└──────────────┬──────────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────┐
+│  FINAL RESPONSE                                     │
+│  ─────────────────────────────────────────────────  │
+│  {                                                   │
+│    status: "complete",                              │
+│    research: {                    🆕 NEW!           │
+│      total_found: 347,                              │
+│      total_ranked: 20,                              │
+│      avg_similarity: 0.73,                          │
+│      top_papers: [...]                              │
+│    },                                                │
+│    novelty: {...},                                  │
+│    gaps: [...],                                     │
+│    swot: {...},                                     │
+│    publishability: {...},                           │
+│    suggestions: [...],                              │
+│    metadata: {                                       │
+│      processing_time: 52.3s,                        │
+│      real_papers_analyzed: true  🆕 NEW!            │
+│    }                                                 │
+│  }                                                   │
+└─────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                    PROGRESS TRACKING (WebSocket)
+
+═══════════════════════════════════════════════════════════════════════════
+
+ 0% ├─ Connection established
+10% ├─ Assessing completeness
+20% ├─ Clarification (if needed)
+40% ├─ Abstract enriched
+    │
+45% ├─ 🆕 Deep Research: Extracting keywords
+46% ├─ 🆕 Deep Research: Searching PubMed (500 papers)
+48% ├─ 🆕 Deep Research: Ranking titles
+50% ├─ 🆕 Deep Research: Fetching abstracts
+52% ├─ 🆕 Deep Research: Ranking abstracts
+55% ├─ 🆕 Deep Research: Found 20 papers (avg 0.73)
+    │
+60% ├─ Novelty scoring (with real papers)
+65% ├─ Novelty: Score 68/100
+    │
+70% ├─ Gap analysis (with evidence)
+75% ├─ Gaps: Found 5 gaps
+    │
+80% ├─ SWOT analysis
+85% ├─ SWOT: Complete
+    │
+90% ├─ Publishability prediction
+93% ├─ Publishability: MEDIUM (Q2)
+    │
+95% ├─ Generating suggestions
+98% ├─ Suggestions: 8 recommendations
+    │
+100% └─ Analysis complete!
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                    KEY DIFFERENCES: BEFORE vs AFTER
+
+═══════════════════════════════════════════════════════════════════════════
+
+BEFORE (LLM Only):
+───────────────────
+{
+  "novelty_score": 72,
+  "most_similar_paper": "Possibly Smith et al. 2023",  ← Hallucinated!
+  "similar_papers_count": 0                            ← No real data
+}
+
+AFTER (With Research Agent):
+─────────────────────────────
+{
+  "research": {
+    "total_found": 347,                                ← Real PubMed results
+    "top_papers": [
+      {
+        "title": "ML for ICU Mortality Prediction",
+        "authors": ["Smith J", "Doe A"],
+        "year": 2024,
+        "journal": "JAMA",
+        "pmid": "38123456",                            ← Real PMID
+        "doi": "10.1001/jama.2024.12345",              ← Real DOI
+        "similarity": 0.872                            ← Quantified!
+      }
+    ]
+  },
+  "novelty_score": 68,                                 ← More accurate
+  "most_similar_papers": [...],                        ← Real citations
+  "gaps": {
+    "evidence_from_literature": [                      ← Citations!
+      "Smith et al. (2024): Deep Learning for ICU..."
+    ]
+  },
+  "metadata": {
+    "real_papers_analyzed": true                       ← Verified!
+  }
+}
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                         PERFORMANCE IMPACT
+
+═══════════════════════════════════════════════════════════════════════════
+
+OLD TIMELINE (~35s):
+├─ Clarification: 5s
+├─ Novelty: 8s
+├─ Gaps: 7s
+└─ SWOT + Pub: 15s
+
+NEW TIMELINE (~52s):
+├─ Clarification: 5s
+├─ 🆕 Deep Research: 15s  (runs in parallel where possible)
+├─ Novelty: 10s
+├─ Gaps: 10s
+└─ SWOT + Pub: 12s
+
+ADDED TIME: ~17s
+BUT: Results are evidence-based instead of hallucinated!
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                         ARCHITECTURE DIAGRAM
+
+═══════════════════════════════════════════════════════════════════════════
+
+┌────────────────────────────────────────────────────────────────┐
+│                        USER'S BROWSER                          │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  WebSocket Client (test_ws_client.html)                  │ │
+│  │  • Sends abstract                                        │ │
+│  │  • Displays progress (0-100%)                            │ │
+│  │  • Shows research papers                                 │ │
+│  └────────────────────┬─────────────────────────────────────┘ │
+│                       │                                         │
+└───────────────────────┼─────────────────────────────────────────┘
+                        │ WebSocket
+                        │
+┌───────────────────────┼─────────────────────────────────────────┐
+│                       ▼                    FASTAPI SERVER       │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  WebSocket Handler (ws_topic.py)                         │ │
+│  └────────────────────┬─────────────────────────────────────┘ │
+│                       │                                         │
+│                       ▼                                         │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  TopicAnalyzerStreamingService                           │ │
+│  │                                                           │ │
+│  │  ┌────────────────────────────────────────────────────┐  │ │
+│  │  │  ResearchAgent 🆕                                   │  │ │
+│  │  │  • KeywordExtractor                                │  │ │
+│  │  │  • PubMedClient                                    │  │ │
+│  │  │  • SemanticRanker                                  │  │ │
+│  │  └──────────┬─────────────────────────────────────────┘  │ │
+│  │             │                                              │ │
+│  │             ▼                                              │ │
+│  │  ┌─────────────────────────────────────────────────────┐ │ │
+│  │  │  Topic Analyzer Skills                              │ │ │
+│  │  │  • score_novelty() (enhanced with papers)           │ │ │
+│  │  │  • analyze_gaps() (with citations)                  │ │ │
+│  │  │  • perform_swot()                                   │ │ │
+│  │  │  • predict_publishability()                         │ │ │
+│  │  │  • suggest_improvements()                           │ │ │
+│  │  └─────────────────────────────────────────────────────┘ │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│                       │                                         │
+└───────────────────────┼─────────────────────────────────────────┘
+                        │ HTTPS
+                        │
+┌───────────────────────┼─────────────────────────────────────────┐
+│                       ▼             EXTERNAL APIS               │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  PubMed E-utilities                                      │ │
+│  │  • esearch: Search by keywords                           │ │
+│  │  • efetch: Get full records                              │ │
+│  │  • Rate limit: 3 req/s (10 with API key)                 │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  LLM APIs                                                │ │
+│  │  • Claude (Anthropic)                                    │ │
+│  │  • GPT-4 (OpenAI)                                        │ │
+│  │  • Gemini (Google)                                       │ │
+│  └──────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════
