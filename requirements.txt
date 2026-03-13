@@ -1,15 +1,21 @@
+# FastAPI + Server
 fastapi
 uvicorn[standard]
 pydantic-settings
+
+# LLM Providers
 anthropic
 openai
 google-genai
-llama-index
-llama-index-vector-stores-qdrant
-llama-index-embeddings-huggingface
-qdrant-client
+
+# Vector DB + Embeddings
+chromadb
 sentence-transformers
+
+# Supabase
+supabase
+
+# Utilities
 numpy
 python-dotenv
-websockets  # For WebSocket client testing
-
+websockets

@@ -1,23 +1,31 @@
+"""API v1 Router - Research Formation System."""
+
 from fastapi import APIRouter
 
-from app.api.v1 import auth, history, journal, manuscript, topic, ws_topic
+from app.api.v1 import auth, session, chat, abstract, gate, revision, outline, ws_chat
 
 api_router = APIRouter()
 
-# Auth routes
-api_router.include_router(auth.router)
+# Authentication
+api_router.include_router(auth.router, tags=["Auth"])
 
-# Research history
-api_router.include_router(history.router)
+# Session management
+api_router.include_router(session.router, tags=["Session"])
 
-# Feature routes
-api_router.include_router(topic.router, prefix="/topic", tags=["Topic Analyzer"])
-api_router.include_router(
-    journal.router, prefix="/journal", tags=["Journal Matcher"]
-)
-api_router.include_router(
-    manuscript.router, prefix="/manuscript", tags=["Manuscript Strategist"]
-)
+# Conversational engine
+api_router.include_router(chat.router, tags=["Chat"])
 
-# WebSocket routes
-api_router.include_router(ws_topic.router, tags=["WebSocket - Topic Analyzer"])
+# Abstract generation
+api_router.include_router(abstract.router, tags=["Abstract"])
+
+# Submission gate (Phase 2)
+api_router.include_router(gate.router, tags=["Gate"])
+
+# Guided revision
+api_router.include_router(revision.router, tags=["Revision"])
+
+# Manuscript outline (Phase 3)
+api_router.include_router(outline.router, tags=["Outline"])
+
+# WebSocket
+api_router.include_router(ws_chat.router, tags=["WebSocket"])
