@@ -5,9 +5,19 @@ and structural requirements without LLM involvement.
 """
 
 import re
+import unicodedata
+import logging
 from typing import Optional
 
 from app.models.enums import DesignType
+
+logger = logging.getLogger(__name__)
+
+
+def _normalize(text: str) -> str:
+    """Strip Vietnamese diacritics and lowercase for keyword matching."""
+    nfd = unicodedata.normalize("NFD", text)
+    return "".join(c for c in nfd if unicodedata.category(c) != "Mn").lower()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -81,7 +91,9 @@ DESIGN_RULES: dict[DesignType, dict] = {
     DesignType.COHORT_RETROSPECTIVE: {
         "keywords": [
             "retrospective cohort", "historical cohort", "chart review cohort",
-            "hoi cu", "nghien cuu thuan tap hoi cu", "ho so benh an"
+            "hoi cuu", "nghien cuu thuan tap hoi cuu", "ho so benh an",
+            # Also match without the doubled vowel in case of variant spellings
+            "hoi cu", "nghien cuu thuan tap hoi cu",
         ],
         "required_elements": [
             "population", "exposure", "primary_endpoint", "sample_size",
@@ -266,7 +278,10 @@ def infer_design_type(text: str) -> DesignType:
     Returns:
         DesignType enum value, defaults to UNKNOWN if no match
     """
-    text_lower = text.lower()
+    # Normalize to strip Vietnamese diacritics before matching
+    text_norm = _normalize(text)
+
+    logger.info("[DESIGN] Input normalized: %r", text_norm[:200])
 
     # Score each design type
     scores: dict[DesignType, int] = {}
@@ -275,23 +290,26 @@ def infer_design_type(text: str) -> DesignType:
         score = 0
         for keyword in rules["keywords"]:
             # Exact phrase match gets highest score
-            if keyword in text_lower:
+            if keyword in text_norm:
                 score += 2
             else:
                 # Partial word match only for words with ≥ 7 characters.
                 # Vietnamese common words like "nghien", "thuan", "truoc"
                 # are only 5-6 chars but match coincidentally across phrases.
                 meaningful_words = [w for w in keyword.split() if len(w) >= 7]
-                if meaningful_words and any(w in text_lower for w in meaningful_words):
+                if meaningful_words and any(w in text_norm for w in meaningful_words):
                     score += 1
         if score > 0:
             scores[design_type] = score
+            logger.debug("[DESIGN] %s score=%d", design_type.value, score)
 
     if not scores:
+        logger.info("[DESIGN] No design type matched — returning UNKNOWN")
         return DesignType.UNKNOWN
 
-    # Return highest scoring design type
-    return max(scores, key=scores.get)
+    best = max(scores, key=scores.get)
+    logger.info("[DESIGN] Inferred: %s (score=%d, all=%s)", best.value, scores[best], scores)
+    return best
 
 
 

@@ -16,13 +16,13 @@ router = APIRouter(prefix="/session", tags=["session"])
 
 WELCOME_MESSAGES = {
     Phase.PHASE1: (
-        "Chao ban! Toi la tro ly nghien cuu AVR. "
-        "Hay chia se y tuong nghien cuu cua ban, toi se giup ban xay dung Research Blueprint. "
-        "Ban co the mo ta bang tieng Viet, tieng Anh, hoac ket hop ca hai."
+        "Chào bạn! Tôi là trợ lý nghiên cứu AVR. "
+        "Hãy mô tả ý tưởng nghiên cứu của bạn — tôi sẽ giúp xây dựng Research Blueprint. "
+        "Bạn có thể mô tả bằng tiếng Việt, tiếng Anh, hoặc kết hợp cả hai."
     ),
     Phase.PHASE2: (
-        "Chao ban! Day la Phase 2 - Submission Gate. "
-        "Hay gui abstract cua ban de toi danh gia theo tieu chuan tap chi quoc te."
+        "Chào bạn! Đây là Phase 2 — Cửa ải kiểm duyệt. "
+        "Hãy dán abstract hoàn chỉnh (có data thật) để tôi đánh giá theo tiêu chuẩn tạp chí quốc tế."
     ),
 }
 

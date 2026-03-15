@@ -1,5 +1,7 @@
 """AVR Research Formation System - Main Application."""
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,6 +9,15 @@ from app.api.v1.router import api_router
 from app.config import get_settings
 
 settings = get_settings()
+
+# Configure logging — ensure INFO level for our app modules
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+# Set DEBUG for extraction/design modules during debugging
+for _mod in ("app.core.extractor", "app.rules.design_rules", "app.api.v1.ws_chat", "app.api.v1.abstract"):
+    logging.getLogger(_mod).setLevel(logging.INFO)
 
 app = FastAPI(
     title="AVR Research Formation System",

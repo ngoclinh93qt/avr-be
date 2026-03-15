@@ -19,3 +19,6 @@ supabase
 numpy
 python-dotenv
 websockets
+httpx
+reportlab
+python-docx

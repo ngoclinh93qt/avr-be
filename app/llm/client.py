@@ -105,17 +105,43 @@ class LLMClient:
         """
         Stream completion from LLM.
 
-        Provider priority mirrors complete(): local → openrouter → anthropic → fallback.
+        Routes to provider based on default_provider setting.
         """
+        provider = self.settings.default_provider
+
         # 1. Local (Ollama)
-        if self.settings.default_provider == "local" and self.settings.local_base_url:
+        if provider == "local" and self.settings.local_base_url:
             async for chunk in self._stream_local(
                 prompt, system_prompt, model, temperature, max_tokens
             ):
                 yield chunk
             return
 
-        # 2. OpenRouter
+        # 2. Google (Gemini)
+        if provider == "google" and self.settings.google_api_key:
+            async for chunk in self._stream_google(
+                prompt, system_prompt, model, temperature, max_tokens
+            ):
+                yield chunk
+            return
+
+        # 3. Anthropic
+        if provider == "anthropic" and self.settings.anthropic_api_key:
+            async for chunk in self._stream_anthropic(
+                prompt, system_prompt, model, temperature, max_tokens
+            ):
+                yield chunk
+            return
+
+        # 4. OpenRouter
+        if provider == "openrouter" and self.settings.openrouter_api_key:
+            async for chunk in self._stream_openrouter(
+                prompt, system_prompt, model, temperature, max_tokens
+            ):
+                yield chunk
+            return
+
+        # Fallback: try any available provider
         if self.settings.openrouter_api_key:
             async for chunk in self._stream_openrouter(
                 prompt, system_prompt, model, temperature, max_tokens
@@ -123,7 +149,6 @@ class LLMClient:
                 yield chunk
             return
 
-        # 3. Anthropic
         if self.settings.anthropic_api_key:
             async for chunk in self._stream_anthropic(
                 prompt, system_prompt, model, temperature, max_tokens
@@ -131,7 +156,14 @@ class LLMClient:
                 yield chunk
             return
 
-        # 4. Fallback to non-streaming complete()
+        if self.settings.google_api_key:
+            async for chunk in self._stream_google(
+                prompt, system_prompt, model, temperature, max_tokens
+            ):
+                yield chunk
+            return
+
+        # Last resort: non-streaming complete()
         response = await self.complete(
             prompt, system_prompt, model, temperature, max_tokens
         )
@@ -362,6 +394,35 @@ class LLMClient:
         ) as stream:
             async for text in stream.text_stream:
                 yield text
+
+    async def _stream_google(
+        self,
+        prompt: str,
+        system_prompt: Optional[str],
+        model: Optional[str],
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncGenerator[str, None]:
+        """Stream from Google Gemini API."""
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=self.settings.google_api_key)
+        model = model or self.settings.google_model or "gemini-2.0-flash"
+
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt if system_prompt else None,
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+
+        for chunk in client.models.generate_content_stream(
+            model=model,
+            contents=prompt,
+            config=config,
+        ):
+            if chunk.text:
+                yield chunk.text
 
     async def _call_openai(
         self,

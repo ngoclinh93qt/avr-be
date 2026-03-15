@@ -3,8 +3,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 
 from app.core.supabase_client import supabase_service
-from app.core.journal_search import get_journal_by_id
-from app.core.gate_engine import can_proceed_to_outline
+from app.domain.search.journal_search import get_journal_by_id
+from app.domain.gate.gate_engine import can_proceed_to_outline
 from app.models.schemas import (
     OutlineGenerateRequest, OutlineGenerateResponse,
     JournalMetadata, OutlineSection,

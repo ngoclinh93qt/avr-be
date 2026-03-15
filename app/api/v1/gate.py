@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 
 from app.core.supabase_client import supabase_service
-from app.core.gate_engine import (
+from app.domain.gate.gate_engine import (
     run_gate,
     format_violations_for_display,
     get_gate_result_message,

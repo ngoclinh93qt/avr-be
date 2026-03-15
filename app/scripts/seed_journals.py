@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 
 def main():
     """Seed journals into ChromaDB."""
-    from app.core.journal_search import (
+    from app.domain.search.journal_search import (
         add_journals_batch,
         get_collection_stats,
         clear_collection,
@@ -61,7 +61,7 @@ def main():
 
     # Test search
     print("\nTesting search...")
-    from app.core.journal_search import search_journals
+    from app.domain.search.journal_search import search_journals
 
     test_queries = [
         "pediatric surgery appendicitis laparoscopic",

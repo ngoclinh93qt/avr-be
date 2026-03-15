@@ -6,13 +6,13 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.core.supabase_client import supabase_service
-from app.core.extractor import extract_attributes, merge_attributes
-from app.core.conversation import (
+from app.domain.extraction.extractor import extract_attributes, merge_attributes
+from app.domain.blueprint.conversation import (
     evaluate_completeness,
     get_missing_element_questions,
     format_blocking_message,
 )
-from app.core.blueprint_builder import build_blueprint
+from app.domain.blueprint.blueprint_builder import build_blueprint
 from app.core.ws_manager import ws_manager
 from app.models.schemas import ExtractedAttributes
 from app.models.enums import ConversationState, SessionStatus
@@ -116,8 +116,9 @@ async def websocket_chat(websocket: WebSocket):
 
                 # Send welcome message
                 welcome = (
-                    "Chao ban! Toi la tro ly nghien cuu AVR. "
-                    "Hay chia se y tuong nghien cuu cua ban."
+                    "Chào bạn! Tôi là trợ lý nghiên cứu AVR. "
+                    "Hãy chia sẻ ý tưởng nghiên cứu của bạn — "
+                    "tôi sẽ giúp xây dựng Research Blueprint từng bước."
                 )
                 await supabase_service.add_conversation_turn(
                     session_id=session_id,
@@ -222,8 +223,15 @@ async def _process_chat_message(
             logger.warning("Failed to parse existing attributes for session %s: %s", session_id, e)
             existing_attrs = ExtractedAttributes()
 
+    logger.info("─── [CHAT] session=%s | message=%r", session_id, user_message[:300])
+    logger.info("[CHAT] existing_attrs before extraction: %s",
+                existing_attrs.model_dump(exclude_none=True) if existing_attrs else "None")
+
     new_attrs = extract_attributes(user_message, existing_attrs)
     merged_attrs = merge_attributes(existing_attrs or ExtractedAttributes(), new_attrs)
+
+    logger.info("[CHAT] merged_attrs after extraction: %s",
+                merged_attrs.model_dump(exclude_none=True))
 
     # Save user message
     await supabase_service.add_conversation_turn(
@@ -242,10 +250,12 @@ async def _process_chat_message(
         design_type=design_type,
         clarifying_turns=turns_count,
     )
-    logger.debug(
-        "Completeness check: session=%s turn=%d is_complete=%s blocking=%s missing=%s",
-        session_id, turns_count, completeness.is_complete,
-        completeness.blocking_issues, completeness.missing_elements,
+    logger.info(
+        "[CHAT] Completeness: turn=%d  is_complete=%s  score=%.0f%%  "
+        "missing=%s  blocking=%s  next_state=%s",
+        turns_count, completeness.is_complete, completeness.completeness_score,
+        completeness.missing_elements, completeness.blocking_issues,
+        completeness.next_state.value,
     )
 
     # Generate response
@@ -255,8 +265,9 @@ async def _process_chat_message(
         blueprint = None
 
     elif completeness.is_complete:
-        logger.info("Session %s complete — building blueprint", session_id)
+        logger.info("[CHAT] Session %s COMPLETE — building blueprint (design=%s)", session_id, design_type)
         blueprint = build_blueprint(merged_attrs, design_type)
+        logger.info("[CHAT] Blueprint built: %s", blueprint.model_dump(exclude_none=True))
         response_text = _format_completion_message_short(blueprint)
         next_state = ConversationState.COMPLETE
 
@@ -269,6 +280,8 @@ async def _process_chat_message(
             llm = get_llm_client()
             history = await supabase_service.get_conversation_turns(session_id, limit=10)
 
+            logger.info("[CHAT] Requesting LLM clarification — missing=%s  turn=%d",
+                        completeness.missing_elements, turns_count)
             prompt = get_clarification_prompt(
                 missing_elements=completeness.missing_elements,
                 current_attributes=merged_attrs,
@@ -295,7 +308,7 @@ async def _process_chat_message(
 
         except Exception as e:
             logger.exception("LLM streaming failed for session %s", session_id)
-            response_text = "Can them thong tin. Hay mo ta them ve nghien cuu cua ban."
+            response_text = "Cần thêm thông tin. Hãy mô tả thêm về nghiên cứu của bạn."
             await _send_error(websocket, f"LLM error: {e}")
 
     # Save assistant response
@@ -306,6 +319,8 @@ async def _process_chat_message(
     )
 
     # Update session
+    # NOTE: Do NOT set status=abstract_ready here — that only happens in abstract.py
+    # after the abstract is actually generated.
     session_updates = {
         "conversation_state": next_state.value,
         "extracted_attributes": merged_attrs.model_dump(),
@@ -313,12 +328,15 @@ async def _process_chat_message(
 
     if blueprint:
         session_updates["blueprint"] = blueprint.model_dump()
-        session_updates["status"] = SessionStatus.ABSTRACT_READY.value
 
-    logger.debug("Updating session %s: state=%s", session_id, next_state.value)
+    logger.info("[CHAT] Updating session %s: state=%s  has_blueprint=%s",
+                session_id, next_state.value, bool(blueprint))
     await supabase_service.update_research_session(session_id, session_updates)
 
     # Send final state
+    next_action = "generate_abstract" if completeness.is_complete else "continue"
+    logger.info("[CHAT] ─── Done. next_action=%s  state=%s  blueprint=%s ───",
+                next_action, next_state.value, bool(blueprint))
     await websocket.send_json({
         "type": "stream",
         "content": "",
@@ -326,15 +344,19 @@ async def _process_chat_message(
         "state": next_state.value,
         "blueprint": blueprint.model_dump() if blueprint else None,
         "missing_elements": completeness.missing_elements,
-        "next_action": "generate_abstract" if completeness.is_complete else "continue",
+        "next_action": next_action,
     })
 
 
 def _format_completion_message_short(blueprint) -> str:
-    """Format short completion message."""
+    """Format checkpoint-1 summary message in natural Vietnamese."""
+    design_display = blueprint.design_type.value.replace("_", " ").title()
     return (
-        f"Da thu thap du thong tin! "
-        f"Thiet ke: {blueprint.design_type.value}, "
-        f"Co mau: n={blueprint.sample_size}. "
-        f"San sang tao Estimated Abstract."
+        f"Được rồi, mình tổng hợp lại:\n\n"
+        f"Bạn muốn nghiên cứu về **{blueprint.intervention_or_exposure}** "
+        f"trên **{blueprint.population}** (n = {blueprint.sample_size}), "
+        f"thiết kế **{design_display}**, "
+        f"đo lường bằng **{blueprint.primary_outcome}**.\n\n"
+        f"Hướng này ổn rồi — mình tạo Abstract ước tính và kiểm tra độ mới nhé? "
+        f"Nếu cần chỉnh gì, nói mình biết."
     )

@@ -8,7 +8,7 @@ Supports:
 - OpenRouter (multiple models)
 
 Usage:
-    from app.core.llm_router import llm_router
+    from app.llm.llm_router import llm_router
     
     # Use default provider
     result = await llm_router.call(prompt="Hello", json_output=True)

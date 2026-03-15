@@ -5,6 +5,8 @@ using rule-based parsing and pattern matching.
 """
 
 import re
+import unicodedata
+import logging
 from typing import Optional, Any
 
 from app.models.schemas import ExtractedAttributes
@@ -12,6 +14,17 @@ from app.models.enums import DesignType
 from app.rules.design_rules import infer_design_type
 from app.rules.endpoint_rules import is_endpoint_measurable, extract_endpoints
 from app.rules.feasibility_rules import detect_rare_disease
+
+logger = logging.getLogger(__name__)
+
+
+def _normalize(text: str) -> str:
+    """Strip Vietnamese diacritics and lowercase for pattern matching.
+
+    Maps 'bệnh nhân' → 'benh nhan', 'nội soi' → 'noi soi', etc.
+    """
+    nfd = unicodedata.normalize("NFD", text)
+    return "".join(c for c in nfd if unicodedata.category(c) != "Mn").lower()
 
 
 # Number extraction patterns
@@ -72,40 +85,50 @@ def extract_attributes(
     else:
         attrs = ExtractedAttributes()
 
-    text_lower = text.lower()
+    # Normalize Vietnamese text (strips diacritics) for pattern matching
+    text_norm = _normalize(text)
+
+    logger.info("[EXTRACTOR] Input (first 200 chars): %r", text[:200])
+    logger.info("[EXTRACTOR] Normalized: %r", text_norm[:200])
 
     # Extract design type
     design = infer_design_type(text)
     if design != DesignType.UNKNOWN:
         attrs.design_type = design
+    logger.info("[EXTRACTOR] design_type=%s", attrs.design_type)
 
     # Extract sample size
-    sample_size = _extract_sample_size(text_lower)
+    sample_size = _extract_sample_size(text_norm)
     if sample_size:
         attrs.sample_size = sample_size
+    logger.info("[EXTRACTOR] sample_size=%s", attrs.sample_size)
 
     # Extract population
-    population = _extract_population(text)
+    population = _extract_population(text_norm)
     if population:
         attrs.population = population
+    logger.info("[EXTRACTOR] population=%r", attrs.population)
 
     # Extract age range
-    age_range = _extract_age_range(text_lower)
+    age_range = _extract_age_range(text_norm)
     if age_range:
         attrs.age_range = age_range
+    logger.info("[EXTRACTOR] age_range=%r", attrs.age_range)
 
     # Extract intervention
-    intervention = _extract_intervention(text)
+    intervention = _extract_intervention(text_norm)
     if intervention:
         attrs.intervention = intervention
+    logger.info("[EXTRACTOR] intervention=%r", attrs.intervention)
 
     # Extract comparator
-    comparator = _extract_comparator(text)
+    comparator = _extract_comparator(text_norm)
     if comparator:
         attrs.comparator = comparator
+    logger.info("[EXTRACTOR] comparator=%r", attrs.comparator)
 
     # Extract endpoints
-    endpoints = _extract_all_endpoints(text)
+    endpoints = _extract_all_endpoints(text_norm)
     if endpoints.get("primary"):
         attrs.primary_endpoint = endpoints["primary"]
         # Check if measurable
@@ -113,72 +136,76 @@ def extract_attributes(
         attrs.endpoint_measurable = is_measurable
     if endpoints.get("secondary"):
         attrs.secondary_endpoints = endpoints["secondary"]
+    logger.info("[EXTRACTOR] primary_endpoint=%r  measurable=%s  secondary=%s",
+                attrs.primary_endpoint, attrs.endpoint_measurable, attrs.secondary_endpoints)
 
     # Extract setting
-    setting = _extract_setting(text)
+    setting = _extract_setting(text_norm)
     if setting:
         attrs.setting = setting
+    logger.info("[EXTRACTOR] setting=%r", attrs.setting)
 
     # Extract duration (general)
-    duration = _extract_duration(text)
+    duration = _extract_duration(text_norm)
     if duration:
         attrs.duration = duration
+    logger.info("[EXTRACTOR] duration=%r", attrs.duration)
 
     # ── RCT / Interventional ──────────────────────────────────────────────
-    randomization_method = _extract_randomization_method(text_lower)
+    randomization_method = _extract_randomization_method(text_norm)
     if randomization_method:
         attrs.randomization_method = randomization_method
 
-    blinding = _extract_blinding(text_lower)
+    blinding = _extract_blinding(text_norm)
     if blinding:
         attrs.blinding = blinding
 
-    allocation = _extract_allocation_concealment(text_lower)
+    allocation = _extract_allocation_concealment(text_norm)
     if allocation:
         attrs.allocation_concealment = allocation
 
     # ── Cohort / Longitudinal ─────────────────────────────────────────────
-    follow_up = _extract_follow_up_duration(text_lower)
+    follow_up = _extract_follow_up_duration(text_norm)
     if follow_up:
         attrs.follow_up_duration = follow_up
 
-    data_source = _extract_data_source(text_lower)
+    data_source = _extract_data_source(text_norm)
     if data_source:
         attrs.data_source = data_source
 
     # ── Case-control / Case studies ───────────────────────────────────────
-    case_def = _extract_case_definition(text_lower)
+    case_def = _extract_case_definition(text_norm)
     if case_def:
         attrs.case_definition = case_def
 
-    matching = _extract_matching_criteria(text_lower)
+    matching = _extract_matching_criteria(text_norm)
     if matching:
         attrs.matching_criteria = matching
 
     # ── Diagnostic accuracy ───────────────────────────────────────────────
-    index_test = _extract_index_test(text_lower)
+    index_test = _extract_index_test(text_norm)
     if index_test:
         attrs.index_test = index_test
 
-    ref_standard = _extract_reference_standard(text_lower)
+    ref_standard = _extract_reference_standard(text_norm)
     if ref_standard:
         attrs.reference_standard = ref_standard
 
     # ── Review / Synthesis ────────────────────────────────────────────────
-    databases = _extract_databases(text_lower)
+    databases = _extract_databases(text_norm)
     if databases:
         attrs.databases = databases
 
-    search_strategy = _extract_search_strategy(text_lower)
+    search_strategy = _extract_search_strategy(text_norm)
     if search_strategy:
         attrs.search_strategy = search_strategy
 
     # ── Qualitative ───────────────────────────────────────────────────────
-    data_collection = _extract_data_collection_method(text_lower)
+    data_collection = _extract_data_collection_method(text_norm)
     if data_collection:
         attrs.data_collection_method = data_collection
 
-    analysis_approach = _extract_analysis_approach(text_lower)
+    analysis_approach = _extract_analysis_approach(text_norm)
     if analysis_approach:
         attrs.analysis_approach = analysis_approach
 
@@ -187,8 +214,9 @@ def extract_attributes(
         attrs.rare_disease_flag = True
 
     # Check for multi-center
-    attrs.multi_center = _is_multicenter(text_lower)
+    attrs.multi_center = _is_multicenter(text_norm)
 
+    logger.info("[EXTRACTOR] Final attrs: %s", attrs.model_dump(exclude_none=True))
     return attrs
 
 
@@ -205,7 +233,7 @@ def _extract_sample_size(text: str) -> Optional[int]:
 
 
 def _extract_population(text: str) -> Optional[str]:
-    """Extract population description from text."""
+    """Extract population description from normalized text."""
     # Look for population markers
     population_patterns = [
         r"(benh nhan|patient|doi tuong|subject)\s*(la|la nhung|:)?\s*([^,.;]+)",

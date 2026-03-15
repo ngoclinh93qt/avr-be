@@ -232,8 +232,54 @@ class JournalSuggestion(BaseModel):
     issn: Optional[str] = None
     impact_factor: Optional[float] = None
     specialty: Optional[str] = None
+    open_access: Optional[str] = None   # "Diamond OA" | "Hybrid OA" | "Subscription"
+    abstract_limit: Optional[str] = None  # e.g. "≤ 250 từ"
+    citation_style: Optional[str] = None  # e.g. "Vancouver"
     similarity_score: float
     reasoning: Optional[str] = None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Novelty Check
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class NoveltyPaper(BaseModel):
+    """A single paper found during novelty check."""
+    title: str
+    authors: str
+    year: str
+    journal: str
+    pmid: Optional[str] = None
+
+
+class NoveltyCheck(BaseModel):
+    """Result of PubMed novelty scan."""
+    count: int
+    papers: list[NoveltyPaper] = []
+    commentary: str          # LLM-generated short commentary in Vietnamese
+    keywords_used: list[str] = []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Research Roadmap
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class RoadmapStep(BaseModel):
+    """A single step in the research roadmap."""
+    step_number: int
+    title: str
+    description: str
+    who: str                 # "Bạn tự làm" | "AVR hỗ trợ"
+    duration_estimate: str
+    avr_tool: Optional[str] = None   # coming-soon tool label
+
+
+class ResearchRoadmap(BaseModel):
+    """Roadmap generated from blueprint — template-based, no LLM."""
+    steps: list[RoadmapStep] = []
+    checklist_type: str      # STROBE | CONSORT | STARD | PRISMA | CARE
+    total_timeline_estimate: str
+    design_type: str
 
 
 class AbstractGenerateRequest(BaseModel):
@@ -242,12 +288,14 @@ class AbstractGenerateRequest(BaseModel):
 
 
 class AbstractGenerateResponse(BaseModel):
-    """Response with generated abstract and journal suggestions."""
+    """Response with generated abstract, novelty check, journal suggestions, and roadmap."""
     session_id: str
     estimated_abstract: str
     journal_suggestions: list[JournalSuggestion] = []
     blueprint: ResearchBlueprint
     status: SessionStatus
+    novelty_check: Optional[NoveltyCheck] = None
+    roadmap: Optional[ResearchRoadmap] = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

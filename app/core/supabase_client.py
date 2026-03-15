@@ -105,9 +105,13 @@ class SupabaseService:
 
     async def get_profile(self, user_id: str) -> Optional[dict]:
         """Get user profile."""
-        admin = await self.get_admin()
-        response = await admin.table("profiles").select("*").eq("id", user_id).single().execute()
-        return response.data
+        try:
+            admin = await self.get_admin()
+            response = await admin.table("profiles").select("*").eq("id", user_id).single().execute()
+            return response.data
+        except Exception:
+            # PGRST116: no row found — profile doesn't exist yet
+            return None
 
     async def update_profile(self, user_id: str, updates: dict) -> dict:
         """Update user profile."""

@@ -3,15 +3,15 @@
 from fastapi import APIRouter, HTTPException, Depends
 
 from app.core.supabase_client import supabase_service
-from app.core.extractor import extract_attributes, merge_attributes
-from app.core.conversation import (
+from app.domain.extraction.extractor import extract_attributes, merge_attributes
+from app.domain.blueprint.conversation import (
     evaluate_completeness,
     get_missing_element_questions,
     get_clarification_intro,
     format_blocking_message,
     should_ask_clarification,
 )
-from app.core.blueprint_builder import build_blueprint
+from app.domain.blueprint.blueprint_builder import build_blueprint
 from app.models.schemas import (
     ChatMessageRequest, ChatMessageResponse,
     ExtractedAttributes
