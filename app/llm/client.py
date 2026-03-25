@@ -5,11 +5,14 @@ with OpenRouter as primary and direct providers as fallback.
 """
 
 import os
+import logging
 from typing import Optional, AsyncGenerator
 from dataclasses import dataclass
 import httpx
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,47 +53,63 @@ class LLMClient:
         """
         Generate completion from LLM.
 
-        Provider priority:
-          1. local  - Ollama / local OpenAI-compatible server (if DEFAULT_PROVIDER=local)
-          2. openrouter - cloud fallback
-          3. anthropic  - direct
-          4. openai     - direct
+        Provider priority: configured default first, then cloud fallbacks.
         """
-        # 1. Local (Ollama) – preferred when explicitly configured
-        if self.settings.default_provider == "local" and self.settings.local_base_url:
-            try:
-                return await self._call_local(
-                    prompt, system_prompt, model, temperature, max_tokens
-                )
-            except Exception as e:
-                print(f"Local LLM failed: {e}, falling back to cloud...")
+        provider = self.settings.default_provider
 
-        # 2. OpenRouter
+        # 1. Local (Ollama) – preferred when explicitly configured
+        if provider == "local" and self.settings.local_base_url:
+            try:
+                resp = await self._call_local(prompt, system_prompt, model, temperature, max_tokens)
+                _log_complete_response(resp)
+                return resp
+            except Exception as e:
+                logger.warning("Local LLM failed: %s, falling back to cloud...", e)
+
+        # 2. Google – preferred when explicitly configured
+        if provider == "google" and self.settings.google_api_key:
+            try:
+                resp = await self._call_google(prompt, system_prompt, model, temperature, max_tokens)
+                _log_complete_response(resp)
+                return resp
+            except Exception as e:
+                logger.warning("Google failed: %s, falling back...", e)
+
+        # 3. OpenRouter
         if self.settings.openrouter_api_key:
             try:
-                return await self._call_openrouter(
-                    prompt, system_prompt, model, temperature, max_tokens
-                )
+                resp = await self._call_openrouter(prompt, system_prompt, model, temperature, max_tokens)
+                _log_complete_response(resp)
+                return resp
             except Exception as e:
-                print(f"OpenRouter failed: {e}, falling back...")
+                logger.warning("OpenRouter failed: %s, falling back...", e)
 
-        # 3. Anthropic
+        # 4. Anthropic
         if self.settings.anthropic_api_key:
             try:
-                return await self._call_anthropic(
-                    prompt, system_prompt, model, temperature, max_tokens
-                )
+                resp = await self._call_anthropic(prompt, system_prompt, model, temperature, max_tokens)
+                _log_complete_response(resp)
+                return resp
             except Exception as e:
-                print(f"Anthropic failed: {e}")
+                logger.warning("Anthropic failed: %s", e)
 
-        # 4. OpenAI
+        # 5. OpenAI
         if self.settings.openai_api_key:
             try:
-                return await self._call_openai(
-                    prompt, system_prompt, model, temperature, max_tokens
-                )
+                resp = await self._call_openai(prompt, system_prompt, model, temperature, max_tokens)
+                _log_complete_response(resp)
+                return resp
             except Exception as e:
-                print(f"OpenAI failed: {e}")
+                logger.warning("OpenAI failed: %s", e)
+
+        # 6. Google fallback (if not already tried as primary)
+        if provider != "google" and self.settings.google_api_key:
+            try:
+                resp = await self._call_google(prompt, system_prompt, model, temperature, max_tokens)
+                _log_complete_response(resp)
+                return resp
+            except Exception as e:
+                logger.warning("Google fallback failed: %s", e)
 
         raise RuntimeError("No LLM provider available")
 
@@ -108,66 +127,67 @@ class LLMClient:
         Routes to provider based on default_provider setting.
         """
         provider = self.settings.default_provider
-
-        # 1. Local (Ollama)
-        if provider == "local" and self.settings.local_base_url:
-            async for chunk in self._stream_local(
-                prompt, system_prompt, model, temperature, max_tokens
-            ):
-                yield chunk
-            return
-
-        # 2. Google (Gemini)
-        if provider == "google" and self.settings.google_api_key:
-            async for chunk in self._stream_google(
-                prompt, system_prompt, model, temperature, max_tokens
-            ):
-                yield chunk
-            return
-
-        # 3. Anthropic
-        if provider == "anthropic" and self.settings.anthropic_api_key:
-            async for chunk in self._stream_anthropic(
-                prompt, system_prompt, model, temperature, max_tokens
-            ):
-                yield chunk
-            return
-
-        # 4. OpenRouter
-        if provider == "openrouter" and self.settings.openrouter_api_key:
-            async for chunk in self._stream_openrouter(
-                prompt, system_prompt, model, temperature, max_tokens
-            ):
-                yield chunk
-            return
-
-        # Fallback: try any available provider
-        if self.settings.openrouter_api_key:
-            async for chunk in self._stream_openrouter(
-                prompt, system_prompt, model, temperature, max_tokens
-            ):
-                yield chunk
-            return
-
-        if self.settings.anthropic_api_key:
-            async for chunk in self._stream_anthropic(
-                prompt, system_prompt, model, temperature, max_tokens
-            ):
-                yield chunk
-            return
-
-        if self.settings.google_api_key:
-            async for chunk in self._stream_google(
-                prompt, system_prompt, model, temperature, max_tokens
-            ):
-                yield chunk
-            return
-
-        # Last resort: non-streaming complete()
-        response = await self.complete(
-            prompt, system_prompt, model, temperature, max_tokens
+        logger.info(
+            "[LLM STREAM] Starting stream — provider=%s max_tokens=%d prompt_chars=%d",
+            provider, max_tokens, len(prompt),
         )
-        yield response.content
+
+        accumulated: list[str] = []
+
+        async def _route() -> AsyncGenerator[str, None]:
+            # 1. Local (Ollama)
+            if provider == "local" and self.settings.local_base_url:
+                async for chunk in self._stream_local(prompt, system_prompt, model, temperature, max_tokens):
+                    yield chunk
+                return
+
+            # 2. Google (Gemini)
+            if provider == "google" and self.settings.google_api_key:
+                async for chunk in self._stream_google(prompt, system_prompt, model, temperature, max_tokens):
+                    yield chunk
+                return
+
+            # 3. Anthropic
+            if provider == "anthropic" and self.settings.anthropic_api_key:
+                async for chunk in self._stream_anthropic(prompt, system_prompt, model, temperature, max_tokens):
+                    yield chunk
+                return
+
+            # 4. OpenRouter
+            if provider == "openrouter" and self.settings.openrouter_api_key:
+                async for chunk in self._stream_openrouter(prompt, system_prompt, model, temperature, max_tokens):
+                    yield chunk
+                return
+
+            # Fallback: try any available provider
+            if self.settings.openrouter_api_key:
+                async for chunk in self._stream_openrouter(prompt, system_prompt, model, temperature, max_tokens):
+                    yield chunk
+                return
+
+            if self.settings.anthropic_api_key:
+                async for chunk in self._stream_anthropic(prompt, system_prompt, model, temperature, max_tokens):
+                    yield chunk
+                return
+
+            if self.settings.google_api_key:
+                async for chunk in self._stream_google(prompt, system_prompt, model, temperature, max_tokens):
+                    yield chunk
+                return
+
+            # Last resort: non-streaming complete()
+            response = await self.complete(prompt, system_prompt, model, temperature, max_tokens)
+            yield response.content
+
+        async for chunk in _route():
+            accumulated.append(chunk)
+            yield chunk
+
+        full_text = "".join(accumulated)
+        logger.info(
+            "[LLM STREAM] Done — provider=%s total_chars=%d chunks=%d preview=%r",
+            provider, len(full_text), len(accumulated), full_text[:300],
+        )
 
     async def _call_local(
         self,
@@ -395,6 +415,43 @@ class LLMClient:
             async for text in stream.text_stream:
                 yield text
 
+    async def _call_google(
+        self,
+        prompt: str,
+        system_prompt: Optional[str],
+        model: Optional[str],
+        temperature: float,
+        max_tokens: int,
+    ) -> LLMResponse:
+        """Call Google Gemini API (non-streaming)."""
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=self.settings.google_api_key)
+        model = model or self.settings.google_model or "gemini-2.0-flash"
+
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt if system_prompt else None,
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+
+        response = await client.aio.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=config,
+        )
+
+        return LLMResponse(
+            content=response.text,
+            model=model,
+            usage={
+                "prompt_tokens": response.usage_metadata.prompt_token_count,
+                "completion_tokens": response.usage_metadata.candidates_token_count,
+            } if response.usage_metadata else None,
+            finish_reason=str(response.candidates[0].finish_reason) if response.candidates else None,
+        )
+
     async def _stream_google(
         self,
         prompt: str,
@@ -409,6 +466,7 @@ class LLMClient:
 
         client = genai.Client(api_key=self.settings.google_api_key)
         model = model or self.settings.google_model or "gemini-2.0-flash"
+        logger.info("[LLM STREAM] google model resolved → %s", model)
 
         config = types.GenerateContentConfig(
             system_instruction=system_prompt if system_prompt else None,
@@ -416,11 +474,18 @@ class LLMClient:
             max_output_tokens=max_tokens,
         )
 
-        for chunk in client.models.generate_content_stream(
+        chunk_index = 0
+        async for chunk in await client.aio.models.generate_content_stream(
             model=model,
             contents=prompt,
             config=config,
         ):
+            finish = chunk.candidates[0].finish_reason if chunk.candidates else None
+            logger.debug(
+                "[GOOGLE CHUNK %d] finish_reason=%s text=%r",
+                chunk_index, finish, chunk.text,
+            )
+            chunk_index += 1
             if chunk.text:
                 yield chunk.text
 
@@ -459,6 +524,14 @@ class LLMClient:
             },
             finish_reason=response.choices[0].finish_reason,
         )
+
+
+def _log_complete_response(resp: LLMResponse) -> None:
+    """Log a completed (non-streaming) LLM response."""
+    logger.info(
+        "[LLM COMPLETE] model=%s finish_reason=%s usage=%s chars=%d preview=%r",
+        resp.model, resp.finish_reason, resp.usage, len(resp.content), resp.content[:300],
+    )
 
 
 # Singleton instance

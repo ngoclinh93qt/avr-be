@@ -6,7 +6,7 @@ from fastapi import HTTPException, Header, Depends
 from app.core.supabase_client import supabase_service
 
 # Dev mode bypass - set to False in production
-DEV_MODE = True
+DEV_MODE = False
 DEFAULT_USER_ID = "53262502-c85d-436f-98eb-66f518383813"  # admin@avr.com
 
 

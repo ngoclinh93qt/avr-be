@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # Embedding model for ChromaDB
     embedding_model: str = "all-MiniLM-L6-v2"
 
+    # Frontend URL (for OAuth redirects)
+    frontend_url: str = "http://localhost:5173"
+
     # Rate limiting
     free_tier_daily_limit: int = 3  # Abstracts per day for free users
 

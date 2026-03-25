@@ -16,8 +16,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 # Set DEBUG for extraction/design modules during debugging
-for _mod in ("app.core.extractor", "app.rules.design_rules", "app.api.v1.ws_chat", "app.api.v1.abstract"):
-    logging.getLogger(_mod).setLevel(logging.INFO)
+for _mod in ("app.core.extractor", "app.rules.design_rules", "app.api.v1.ws_chat", "app.api.v1.abstract", "app.llm.client"):
+    logging.getLogger(_mod).setLevel(logging.DEBUG)
 
 app = FastAPI(
     title="AVR Research Formation System",

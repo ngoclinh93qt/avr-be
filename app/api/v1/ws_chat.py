@@ -50,6 +50,10 @@ async def websocket_chat(websocket: WebSocket):
     user_id: Optional[str] = DEFAULT_USER_ID if DEV_MODE else None
     session_id: Optional[str] = None
 
+    # Register with ws_manager so HTTP handlers can push messages to this connection
+    if DEV_MODE and user_id:
+        ws_manager.register(websocket, user_id)
+
     # Send auto-auth success in dev mode
     if DEV_MODE and user_id:
         logger.debug("Dev mode: auto-auth user_id=%s", user_id)
@@ -94,6 +98,7 @@ async def websocket_chat(websocket: WebSocket):
                     continue
 
                 user_id = user.id if hasattr(user, 'id') else user.get('id')
+                ws_manager.register(websocket, user_id)
                 logger.info("Auth success: user_id=%s", user_id)
                 await websocket.send_json({"type": "auth_success", "user_id": user_id})
                 continue
@@ -183,8 +188,12 @@ async def websocket_chat(websocket: WebSocket):
             await _send_error(websocket, f"Unknown message type: {msg_type}")
 
     except WebSocketDisconnect:
+        if user_id:
+            ws_manager.disconnect(websocket, user_id)
         logger.info("WebSocket disconnected: session_id=%s user_id=%s", session_id, user_id)
     except Exception as e:
+        if user_id:
+            ws_manager.disconnect(websocket, user_id)
         logger.exception("Unhandled WebSocket error: session_id=%s user_id=%s", session_id, user_id)
         try:
             await _send_error(websocket, f"Internal server error: {e}")
@@ -263,6 +272,7 @@ async def _process_chat_message(
         response_text = format_blocking_message(completeness.blocking_issues)
         next_state = ConversationState.BLOCKED
         blueprint = None
+        await websocket.send_json({"type": "stream", "content": response_text, "done": False})
 
     elif completeness.is_complete:
         logger.info("[CHAT] Session %s COMPLETE — building blueprint (design=%s)", session_id, design_type)
@@ -270,6 +280,7 @@ async def _process_chat_message(
         logger.info("[CHAT] Blueprint built: %s", blueprint.model_dump(exclude_none=True))
         response_text = _format_completion_message_short(blueprint)
         next_state = ConversationState.COMPLETE
+        await websocket.send_json({"type": "stream", "content": response_text, "done": False})
 
     else:
         next_state = ConversationState.CLARIFYING
@@ -297,7 +308,7 @@ async def _process_chat_message(
                 prompt=prompt,
                 system_prompt=SYSTEM_PROMPT,
                 temperature=0.7,
-                max_tokens=500,
+                max_tokens=1500,
             ):
                 response_text += chunk
                 await websocket.send_json({

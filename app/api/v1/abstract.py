@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends
 logger = logging.getLogger(__name__)
 
 from app.core.supabase_client import supabase_service
+from app.core.ws_manager import ws_manager
 from app.domain.search.journal_search import search_journals
 from app.domain.search.pubmed_search import search_pubmed, build_pubmed_keywords
 from app.domain.search.roadmap_generator import generate_roadmap
@@ -25,6 +26,21 @@ from app.llm.prompts.abstract_gen import (
 from app.api.deps import get_current_user_id
 
 router = APIRouter(prefix="/abstract", tags=["abstract"])
+
+
+# ─── Progress emitter ─────────────────────────────────────────────────────────
+
+async def _emit(user_id: str, step: str, status: str, **data):
+    """Push a processing_update event to the user's active WebSocket."""
+    try:
+        await ws_manager.broadcast_to_user(user_id, {
+            "type": "processing_update",
+            "step": step,
+            "status": status,
+            **data,
+        })
+    except Exception:
+        pass  # Non-critical — WS may not be connected
 
 
 # ─── Novelty commentary prompt ────────────────────────────────────────────────
@@ -141,6 +157,7 @@ async def generate_abstract(
 
     # ── 1. Generate abstract ──────────────────────────────────────────────────
     try:
+        await _emit(user_id, "abstract", "running")
         prompt = get_abstract_generation_prompt(blueprint)
         logger.info("[ABSTRACT] Calling LLM for abstract (blueprint fields: %s)",
                     {k: v for k, v in blueprint.model_dump().items() if v})
@@ -159,7 +176,10 @@ async def generate_abstract(
             warning_text = "\n\n[Cảnh báo tự động: " + "; ".join(issues) + "]"
             estimated_abstract += warning_text
 
+        await _emit(user_id, "abstract", "done", chars=len(estimated_abstract))
+
     except Exception as e:
+        await _emit(user_id, "abstract", "error", message=str(e))
         logger.exception("[ABSTRACT] Failed to generate abstract for session=%s", request.session_id)
         raise HTTPException(status_code=500, detail=f"Failed to generate abstract: {str(e)}")
 
@@ -168,6 +188,8 @@ async def generate_abstract(
     try:
         keywords = build_pubmed_keywords(blueprint)
         logger.info("[ABSTRACT] PubMed search keywords: %s", keywords)
+        await _emit(user_id, "pubmed", "running", keywords=keywords)
+
         pubmed_result = await search_pubmed(keywords, max_results=5)
         logger.info("[ABSTRACT] PubMed result: count=%s  papers=%d",
                     pubmed_result.get("count"), len(pubmed_result.get("papers", [])))
@@ -197,7 +219,12 @@ async def generate_abstract(
             commentary=commentary,
             keywords_used=pubmed_result.get("keywords_used", keywords),
         )
+        await _emit(user_id, "pubmed", "done",
+                    count=pubmed_result["count"],
+                    papers=len(papers),
+                    keywords=pubmed_result.get("keywords_used", keywords))
     except Exception as e:
+        await _emit(user_id, "pubmed", "error", message=str(e))
         logger.warning("[ABSTRACT] Novelty check failed (non-critical): %s", e)
 
     # ── 3. Journal suggestions ────────────────────────────────────────────────
@@ -208,6 +235,8 @@ async def generate_abstract(
             f"{blueprint.intervention_or_exposure}"
         )
         logger.info("[ABSTRACT] Journal search query: %r", search_query[:100])
+        await _emit(user_id, "journals", "running", query=search_query[:80])
+
         journals = search_journals(
             query=search_query,
             specialty=blueprint.specialty,
@@ -228,16 +257,22 @@ async def generate_abstract(
             )
             for j in journals
         ]
+        await _emit(user_id, "journals", "done", count=len(journal_suggestions))
     except Exception as e:
+        await _emit(user_id, "journals", "error", message=str(e))
         logger.warning("[ABSTRACT] Journal search failed (non-critical): %s", e)
 
     # ── 4. Research roadmap ───────────────────────────────────────────────────
     try:
+        await _emit(user_id, "roadmap", "running")
         roadmap = generate_roadmap(blueprint)
         logger.info("[ABSTRACT] Roadmap generated: design=%s  steps=%d",
                     roadmap.design_type if roadmap else None,
                     len(roadmap.steps) if roadmap else 0)
+        await _emit(user_id, "roadmap", "done",
+                    steps=len(roadmap.steps) if roadmap else 0)
     except Exception as e:
+        await _emit(user_id, "roadmap", "error", message=str(e))
         logger.warning("[ABSTRACT] Roadmap generation failed (non-critical): %s", e)
         roadmap = None
 

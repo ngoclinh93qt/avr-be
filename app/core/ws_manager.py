@@ -43,6 +43,21 @@ class WebSocketManager:
         """Check if user can create a new connection."""
         return self.get_user_connection_count(user_id) < self.max_connections_per_user
 
+    def register(
+        self,
+        websocket: WebSocket,
+        user_id: str,
+        session_id: Optional[str] = None,
+    ) -> UserConnection:
+        """Register an already-accepted WebSocket connection (no accept() call)."""
+        connection = UserConnection(
+            websocket=websocket,
+            user_id=user_id,
+            session_id=session_id,
+        )
+        self._connections[user_id].append(connection)
+        return connection
+
     async def connect(
         self,
         websocket: WebSocket,
