@@ -8,8 +8,9 @@ logger = logging.getLogger(__name__)
 
 from app.core.supabase_client import supabase_service
 from app.core.ws_manager import ws_manager
+from app.core.ws_manager import ws_manager
 from app.domain.search.journal_search import search_journals
-from app.domain.search.pubmed_search import search_pubmed, build_pubmed_keywords
+from app.domain.search.pubmed_search import search_pubmed, build_pubmed_query
 from app.domain.search.roadmap_generator import generate_roadmap
 from app.models.schemas import (
     AbstractGenerateRequest, AbstractGenerateResponse,
@@ -186,11 +187,11 @@ async def generate_abstract(
     # ── 2. PubMed novelty check ───────────────────────────────────────────────
     novelty_check: NoveltyCheck | None = None
     try:
-        keywords = build_pubmed_keywords(blueprint)
-        logger.info("[ABSTRACT] PubMed search keywords: %s", keywords)
-        await _emit(user_id, "pubmed", "running", keywords=keywords)
+        query = await build_pubmed_query(blueprint, llm)
+        logger.info("[ABSTRACT] PubMed search query: %s", query)
+        await _emit(user_id, "pubmed", "running", query=query)
 
-        pubmed_result = await search_pubmed(keywords, max_results=5)
+        pubmed_result = await search_pubmed(query, max_results=5)
         logger.info("[ABSTRACT] PubMed result: count=%s  papers=%d",
                     pubmed_result.get("count"), len(pubmed_result.get("papers", [])))
 
@@ -217,12 +218,12 @@ async def generate_abstract(
             count=pubmed_result["count"],
             papers=papers,
             commentary=commentary,
-            keywords_used=pubmed_result.get("keywords_used", keywords),
+            keywords_used=[pubmed_result.get("query_used", query)],
         )
         await _emit(user_id, "pubmed", "done",
                     count=pubmed_result["count"],
                     papers=len(papers),
-                    keywords=pubmed_result.get("keywords_used", keywords))
+                    query=pubmed_result.get("query_used", query))
     except Exception as e:
         await _emit(user_id, "pubmed", "error", message=str(e))
         logger.warning("[ABSTRACT] Novelty check failed (non-critical): %s", e)
@@ -277,12 +278,22 @@ async def generate_abstract(
         roadmap = None
 
     # ── 5. Persist to session ─────────────────────────────────────────────────
+    
+    # Inject reports into blueprint for persistence
+    if blueprint:
+        bp_dict = blueprint.model_dump()
+        bp_dict["novelty_check"] = novelty_check.model_dump() if novelty_check else None
+        bp_dict["roadmap"] = roadmap.model_dump() if roadmap else None
+    else:
+        bp_dict = None
+
     await supabase_service.update_research_session(
         request.session_id,
         {
             "estimated_abstract": estimated_abstract,
             "journal_suggestions": [j.model_dump() for j in journal_suggestions],
             "status": SessionStatus.ABSTRACT_READY.value,
+            "blueprint": bp_dict
         }
     )
 
@@ -297,6 +308,8 @@ async def generate_abstract(
             f"Gợi ý {len(journal_suggestions)} tạp chí phù hợp."
         ),
     )
+
+    await _emit(user_id, "all", "done")
 
     return AbstractGenerateResponse(
         session_id=request.session_id,

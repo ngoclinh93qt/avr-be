@@ -176,9 +176,15 @@ def _session_to_response(session: dict) -> SessionDetailResponse:
 
     # Parse blueprint
     blueprint = None
+    novelty_check = None
+    roadmap = None
+    
     if session.get("blueprint"):
         try:
             blueprint = ResearchBlueprint(**session["blueprint"])
+            # The backend saved these inside the blueprint JSONB, extract them!
+            novelty_check = session["blueprint"].get("novelty_check")
+            roadmap = session["blueprint"].get("roadmap")
         except Exception:
             pass
 
@@ -208,6 +214,8 @@ def _session_to_response(session: dict) -> SessionDetailResponse:
         reviewer_simulation=session.get("reviewer_simulation"),
         manuscript_outline=session.get("manuscript_outline"),
         gate_run_count=session.get("gate_run_count", 0),
+        novelty_check=novelty_check,
+        roadmap=roadmap,
         created_at=session["created_at"],
         updated_at=session["updated_at"],
     )

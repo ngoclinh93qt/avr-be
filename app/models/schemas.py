@@ -118,6 +118,10 @@ class ResearchBlueprint(BaseModel):
     specialty: Optional[str] = None
     setting: Optional[str] = None
 
+    # Stored Phase 1 Results (HACK to persist without DB Schema migration)
+    novelty_check: Optional[dict] = None  # Using dict to avoid circular/forward ref issues
+    roadmap: Optional[dict] = None
+
     # Completeness tracking
     missing_elements: list[str] = []
     warnings: list[str] = []
@@ -207,6 +211,8 @@ class SessionDetailResponse(BaseModel):
     reviewer_simulation: Optional[str] = None
     manuscript_outline: Optional[str] = None
     gate_run_count: int = 0
+    novelty_check: Optional[dict] = None
+    roadmap: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

@@ -13,6 +13,7 @@ class Phase(str, Enum):
 class SessionStatus(str, Enum):
     """Research session status."""
     ACTIVE = "active"
+    GENERATING = "generating"
     ABSTRACT_READY = "abstract_ready"
     GATE_RUN = "gate_run"
     OUTLINE_READY = "outline_ready"

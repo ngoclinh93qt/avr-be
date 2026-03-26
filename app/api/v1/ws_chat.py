@@ -15,7 +15,7 @@ from app.domain.blueprint.conversation import (
 from app.domain.blueprint.blueprint_builder import build_blueprint
 from app.core.ws_manager import ws_manager
 from app.models.schemas import ExtractedAttributes
-from app.models.enums import ConversationState, SessionStatus
+from app.models.enums import ConversationState, SessionStatus, DesignType
 from app.llm import get_llm_client
 from app.llm.prompts.clarify import get_clarification_prompt, SYSTEM_PROMPT
 
