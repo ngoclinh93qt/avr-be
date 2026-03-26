@@ -402,6 +402,7 @@ class WSChatMessage(WSMessageBase):
     """Chat message via WebSocket."""
     type: str = "chat"
     message: str
+    form_data: Optional[dict] = None
 
 
 class WSStreamChunk(WSMessageBase):

@@ -66,12 +66,22 @@ THONG TIN CON THIEU:
 LUOT HOI DAP: {turn_number + 1}
 
 NHIEM VU:
-Dua tren thong tin tren, hay tao 1-3 cau hoi de thu thap thong tin con thieu.
-- Uu tien cac thong tin QUAN TRONG NHAT truoc
-- Hoi tu nhien, than thien
-- Neu da co du thong tin co ban, hay xac nhan va hoi them chi tiet
+Dua tren thong tin tren, hay suy luan va tao ra cac cau hoi de thu thap thong tin cho TUNG phan con thieu.
+- Uu tien cac thong tin QUAN TRONG NHAT truoc (toi da 4 truong)
+- Cau hoi phai cu the, tiep noi nguyen vong cua nguoi dung. (VD: neu ho da noi "tre em" thi hoi them "do tuoi cu the cua tre em la bao nhieu?").
 
-HAY TRA LOI TRUC TIEP VOI CAU HOI, KHONG CAN GIAI THICH THEM."""
+HAY TRA LOI BANG DINH DANG JSON DUY NHAT NAY, KHONG THEM THE MARKDOWN HAY BLA BLA NAO KHAC:
+{{
+    "message": "Cau noi chuyen huong nhe nhang (VD: 'De thiet ke duoc chinh xac hon, ban giup minh lam ro vai y sau nhe:')",
+    "form_fields": [
+        {{
+            "attribute_name": "ten truong tu danh sach thieu (VD: 'population', 'sample_size')",
+            "question_label": "Nhan ngan gon cho truong (VD: 'Do tuoi benh nhi' hoac 'Nhom chung')",
+            "description": "Mo ta chi tiet hoac huong dan dien (VD: 'Vui long xac dinh do tuoi cu the cho nhom tre em trong nghien cuu cua mang.')",
+            "placeholder": "VD: Khong can thiep / Dung thuoc Placebo..."
+        }}
+    ]
+}}"""
 
     return prompt
 

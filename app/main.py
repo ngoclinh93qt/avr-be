@@ -38,6 +38,7 @@ app.add_middleware(
     allow_origins=[
         "https://avr-app-9c203.web.app",
         "https://avr-app-9c203.firebaseapp.com",
+        "http://localhost:5173",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -60,6 +61,8 @@ async def debug_config():
     return {
         "app_env": settings.app_env,
         "default_provider": settings.default_provider,
+        "google_configured": settings.google_api_key is not None,
+        "google_model": settings.google_model,
         "openrouter_configured": settings.openrouter_api_key is not None,
         "anthropic_configured": settings.anthropic_api_key is not None,
         "openai_configured": settings.openai_api_key is not None,

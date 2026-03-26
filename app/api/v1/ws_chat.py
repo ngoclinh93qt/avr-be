@@ -155,12 +155,72 @@ async def websocket_chat(websocket: WebSocket):
 
                 # Load conversation history
                 turns = await supabase_service.get_conversation_turns(session_id, limit=20)
+                
+                # Evaluate missing elements for form recovery
+                existing_attrs = ExtractedAttributes()
+                if session.get("extracted_attributes"):
+                    try:
+                        existing_attrs = ExtractedAttributes(**session["extracted_attributes"])
+                    except Exception:
+                        pass
+                completeness = evaluate_completeness(existing_attrs)
+
+                # Prepare dynamic form for initial state if needed
+                dynamic_form = []
+                if completeness.missing_elements:
+                    # A static dictionary for better fallback UI
+                    FALLBACK_LABELS = {
+                        "population": "Đối tượng nghiên cứu", "sample_size": "Cỡ mẫu", "primary_endpoint": "Kết cục chính",
+                        "intervention": "Can thiệp", "comparator": "Nhóm chứng", "exposure": "Phơi nhiễm",
+                        "follow_up_duration": "Thời gian theo dõi", "reference_standard": "Tiêu chuẩn vàng",
+                        "search_strategy": "Chiến lược tìm kiếm", "databases": "Cơ sở dữ liệu", "case_definition": "Định nghĩa ca bệnh",
+                        "control_definition": "Định nghĩa nhóm chứng", "matching_criteria": "Tiêu chí ghép cặp",
+                        "inclusion_criteria": "Tiêu chuẩn chọn", "exclusion_criteria": "Tiêu chuẩn loại",
+                        "randomization_method": "Phương pháp ngẫu nhiên", "blinding": "Làm mù",
+                    }
+                    FALLBACK_DESC = {
+                        "population": "Đối tượng bạn cần nghiên cứu là gì? (Ví dụ: Trẻ em từ bao nhiêu tuổi, người lớn từ bao nhiêu tuổi, có phân biệt giới tính hay mắc bệnh nền không...)",
+                        "sample_size": "Cỡ mẫu dự kiến bao nhiêu bệnh nhân? (Ví dụ: Khoảng 100-200 bệnh nhân, hoặc lấy mẫu toàn bộ dự kiến được 50 ca...)",
+                        "primary_endpoint": "Kết cục chính để đánh giá là gì? (Ví dụ: Tỷ lệ tử vong sau 30 ngày, mức độ giảm đau sau 1 giờ, thời gian nằm viện...)",
+                        "intervention": "Can thiệp hoặc phương pháp điều trị bạn áp dụng là gì? (Ví dụ: Dùng thuốc A liều lượng B, hoặc phẫu thuật thủ thuật C...)",
+                        "comparator": "Nhóm chứng để đánh giá so sánh là gì? (Ví dụ: Phác đồ chuẩn, dùng thuốc giả dược (Placebo), hay không can thiệp...)",
+                        "exposure": "Nhóm yếu tố nguy cơ/phơi nhiễm bạn muốn đánh giá là gì? (Ví dụ: Tiếp xúc khói thuốc, làm việc ở hầm mỏ...)",
+                        "follow_up_duration": "Bạn dự kiến thời gian theo dõi bệnh nhân là bao lâu? (Ví dụ: Theo dõi 6 tháng, 1 năm, hoặc đến khi xuất viện...)",
+                        "reference_standard": "Tiêu chuẩn vàng để đem ra so sánh với Test của bạn là gì? (Ví dụ: Kết quả giải phẫu bệnh, PCR...)",
+                        "search_strategy": "Chiến lược tìm kiếm tài liệu của bạn là gì? Có từ khóa (Keywords) cụ thể nào không?",
+                        "databases": "Bạn dự kiến sẽ lục tìm tài liệu trên nền tảng cơ sở dữ liệu nào? (Ví dụ: PubMed, Embase, Cochrane...)",
+                        "case_definition": "Định nghĩa chính xác như thế nào thì được tính là 'ca bệnh' trong đề cương của bạn?",
+                        "control_definition": "Định nghĩa như thế nào thì được gọi là 'nhóm chứng' (ng khỏe/ko mắc bệnh) trong đề cương của bạn?",
+                        "matching_criteria": "Nếu bạn có ý định ghép cặp, bạn tính ghép theo tiêu chí nào? (Ví dụ: Cứ 1 bệnh nhân thì ghép 1 người khỏe có cùng tuổi và giới tính...)",
+                        "inclusion_criteria": "Đâu là những tiêu chuẩn chọn chính để đưa bệnh nhân vào nghiên cứu?",
+                        "exclusion_criteria": "Trường hợp nào dù thỏa mãn tiêu chuẩn chọn nhưng bạn sẽ chủ động loại trừ khỏi nghiên cứu?",
+                        "randomization_method": "Chiến lược phân bổ ngẫu nhiên bạn hướng đến là gì? (Ví dụ: Simple, Blocked, máy tính...)",
+                        "blinding": "Dự kiến thiết kế làm mù như thế nào? (Ví dụ: Mù đơn - bệnh nhân không biết, mù đôi - cả BS lẫn BN đều không biết...)"
+                    }
+                    
+                    dynamic_form = [{
+                        "attribute_name": m, 
+                        "question_label": FALLBACK_LABELS.get(m, m.replace("_", " ").title()), 
+                        "description": FALLBACK_DESC.get(m, "Hãy mô tả chi tiết thông tin cho phần này."), 
+                        "placeholder": ""
+                    } for m in completeness.missing_elements]
+
+                # Always append the optional notes field
+                if dynamic_form is not None and isinstance(dynamic_form, list):
+                    dynamic_form.append({
+                        "attribute_name": "additional_notes",
+                        "question_label": "Thông tin bổ sung (Không bắt buộc)",
+                        "description": "Bạn có muốn bổ sung thêm context nào khác không? (Ví dụ: 'Tôi muốn làm tại Bệnh viện Bạch Mai' hoặc 'Nghiên cứu kéo dài 2 năm').",
+                        "placeholder": "VD: Địa điểm nghiên cứu, giới hạn kinh phí..."
+                    })
 
                 await websocket.send_json({
                     "type": "session_started",
                     "session_id": session_id,
                     "state": session.get("conversation_state"),
                     "history": turns,
+                    "missing_elements": completeness.missing_elements,
+                    "dynamic_form": dynamic_form,
                 })
                 continue
 
@@ -171,16 +231,19 @@ async def websocket_chat(websocket: WebSocket):
                     continue
 
                 user_message = message.get("message", "").strip()
-                if not user_message:
-                    await _send_error(websocket, "Empty message")
+                form_data = message.get("form_data", None)
+                
+                if not user_message and not form_data:
+                    await _send_error(websocket, "Empty message and no form data")
                     continue
 
-                logger.info("Processing chat: session_id=%s message_len=%d", session_id, len(user_message))
+                logger.info("Processing chat: session_id=%s message_len=%d form_data=%s", session_id, len(user_message), bool(form_data))
                 # Process the message
                 await _process_chat_message(
                     websocket=websocket,
                     session_id=session_id,
                     user_message=user_message,
+                    form_data=form_data,
                 )
                 continue
 
@@ -215,6 +278,7 @@ async def _process_chat_message(
     websocket: WebSocket,
     session_id: str,
     user_message: str,
+    form_data: dict = None,
 ):
     """Process a chat message and stream response."""
     # Get session
@@ -232,11 +296,24 @@ async def _process_chat_message(
             logger.warning("Failed to parse existing attributes for session %s: %s", session_id, e)
             existing_attrs = ExtractedAttributes()
 
-    logger.info("─── [CHAT] session=%s | message=%r", session_id, user_message[:300])
+    logger.info("─── [CHAT] session=%s | message=%r | form_data=%s", session_id, user_message[:300], bool(form_data))
     logger.info("[CHAT] existing_attrs before extraction: %s",
                 existing_attrs.model_dump(exclude_none=True) if existing_attrs else "None")
 
-    new_attrs = extract_attributes(user_message, existing_attrs)
+    new_attrs = extract_attributes(user_message, existing_attrs) if user_message else ExtractedAttributes()
+    
+    if form_data:
+        for key, value in form_data.items():
+            if hasattr(new_attrs, key) and value is not None and value.strip():
+                # Smart merging: if existing already has string value, append it to preserve context.
+                old_val = getattr(existing_attrs or ExtractedAttributes(), key)
+                if old_val and isinstance(old_val, str) and not isinstance(old_val, DesignType):
+                    # Only append if value isn't already in old_val
+                    if value.lower() not in old_val.lower():
+                        setattr(new_attrs, key, f"{old_val}, {value}")
+                else:
+                    setattr(new_attrs, key, value)
+                
     merged_attrs = merge_attributes(existing_attrs or ExtractedAttributes(), new_attrs)
 
     logger.info("[CHAT] merged_attrs after extraction: %s",
@@ -286,41 +363,78 @@ async def _process_chat_message(
         next_state = ConversationState.CLARIFYING
         blueprint = None
 
-        # Stream LLM response
-        try:
-            llm = get_llm_client()
-            history = await supabase_service.get_conversation_turns(session_id, limit=10)
+        dynamic_form = []
+        if completeness.missing_elements:
+            try:
+                llm = get_llm_client()
+                history_turns = await supabase_service.get_conversation_turns(session_id, limit=6)
+                from app.llm.prompts.clarify import get_clarification_prompt, SYSTEM_PROMPT
 
-            logger.info("[CHAT] Requesting LLM clarification — missing=%s  turn=%d",
-                        completeness.missing_elements, turns_count)
-            prompt = get_clarification_prompt(
-                missing_elements=completeness.missing_elements,
-                current_attributes=merged_attrs,
-                conversation_history=[
-                    {"role": t["role"], "content": t["content"]}
-                    for t in history
-                ],
-                turn_number=turns_count,
-            )
+                prompt = get_clarification_prompt(
+                    missing_elements=completeness.missing_elements,
+                    current_attributes=merged_attrs,
+                    conversation_history=[{"role": t["role"], "content": t["content"]} for t in history_turns],
+                    turn_number=turns_count,
+                )
 
-            response_text = ""
-            async for chunk in llm.stream(
-                prompt=prompt,
-                system_prompt=SYSTEM_PROMPT,
-                temperature=0.7,
-                max_tokens=1500,
-            ):
-                response_text += chunk
-                await websocket.send_json({
-                    "type": "stream",
-                    "content": chunk,
-                    "done": False,
-                })
+                response = await llm.complete(
+                    prompt=prompt,
+                    system_prompt=SYSTEM_PROMPT,
+                    temperature=0.3,
+                    max_tokens=1500,
+                )
+                
+                content = response.content.strip()
+                if content.startswith("```json"):
+                    content = content[7:-3].strip()
+                elif content.startswith("```"):
+                    content = content[3:-3].strip()
 
-        except Exception as e:
-            logger.exception("LLM streaming failed for session %s", session_id)
+                import json
+                data = json.loads(content)
+                response_text = data.get("message", "Vui lòng hoàn thiện các thông tin sau:")
+                dynamic_form = data.get("form_fields", [])
+            except Exception as e:
+                logger.exception("LLM dynamic form generation failed")
+                response_text = "Để hoàn thiện thiết kế nghiên cứu, bạn vui lòng điền các thông tin còn thiếu vào form bên dưới nhé:"
+                
+                FALLBACK_LABELS = {
+                    "population": "Đối tượng nghiên cứu", "sample_size": "Cỡ mẫu", "primary_endpoint": "Kết cục chính",
+                    "intervention": "Can thiệp", "comparator": "Nhóm chứng", "exposure": "Phơi nhiễm",
+                    "follow_up_duration": "Thời gian theo dõi", "reference_standard": "Tiêu chuẩn vàng",
+                    "search_strategy": "Chiến lược tìm kiếm", "databases": "Cơ sở dữ liệu", "case_definition": "Định nghĩa ca bệnh"
+                }
+                FALLBACK_DESC = {
+                    "population": "Đối tượng bạn cần nghiên cứu là gì? (Ví dụ: Trẻ em từ bao nhiêu tuổi, người lớn từ bao nhiêu tuổi, có phân biệt giới tính hay mắc bệnh nền không...)",
+                    "sample_size": "Cỡ mẫu dự kiến bao nhiêu bệnh nhân? (Ví dụ: Khoảng 100-200 bệnh nhân, hoặc lấy mẫu toàn bộ dự kiến được 50 ca...)",
+                    "primary_endpoint": "Kết cục chính để đánh giá là gì? (Ví dụ: Tỷ lệ tử vong sau 30 ngày, mức độ giảm đau sau 1 giờ, thời gian nằm viện...)",
+                    "intervention": "Can thiệp hoặc phương pháp điều trị bạn áp dụng là gì? (Ví dụ: Dùng thuốc A liều lượng B, hoặc phẫu thuật thủ thuật C...)",
+                    "comparator": "Nhóm chứng để đánh giá so sánh là gì? (Ví dụ: Phác đồ chuẩn, dùng thuốc giả dược (Placebo), hay không can thiệp...)",
+                    "exposure": "Nhóm yếu tố nguy cơ/phơi nhiễm bạn muốn đánh giá là gì? (Ví dụ: Tiếp xúc khói thuốc, làm việc ở hầm mỏ...)",
+                }
+                dynamic_form = [{
+                    "attribute_name": m, 
+                    "question_label": FALLBACK_LABELS.get(m, m.replace("_", " ").title()), 
+                    "description": FALLBACK_DESC.get(m, "Hãy mô tả chi tiết thông tin phần này."), 
+                    "placeholder": ""
+                } for m in completeness.missing_elements]
+
+        # Always append the optional notes field if we are returning a form
+        if dynamic_form:
+            dynamic_form.append({
+                "attribute_name": "additional_notes",
+                "question_label": "Thông tin bổ sung (Không bắt buộc)",
+                "description": "Bạn có muốn bổ sung thêm context nào khác không? (Ví dụ: 'Tôi muốn làm tại Bệnh viện Bạch Mai' hoặc 'Nghiên cứu kéo dài 2 năm').",
+                "placeholder": "VD: Địa điểm nghiên cứu, định hướng riêng..."
+            })
+        else:
             response_text = "Cần thêm thông tin. Hãy mô tả thêm về nghiên cứu của bạn."
-            await _send_error(websocket, f"LLM error: {e}")
+
+        await websocket.send_json({
+            "type": "stream",
+            "content": response_text,
+            "done": False,
+        })
 
     # Save assistant response
     await supabase_service.add_conversation_turn(

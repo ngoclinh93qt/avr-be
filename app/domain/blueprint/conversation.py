@@ -20,7 +20,7 @@ MINIMUM_REQUIRED = [
 ]
 
 # Maximum clarifying turns before forcing completion
-MAX_CLARIFYING_TURNS = 10
+MAX_CLARIFYING_TURNS = 3
 
 
 @dataclass
