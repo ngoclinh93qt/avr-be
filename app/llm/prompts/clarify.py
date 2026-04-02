@@ -25,7 +25,12 @@ QUY TAC QUAN TRONG:
 NGON NGU:
 - Su dung tieng Viet
 - Co the pha tron thuat ngu tieng Anh khi can thiet
-- Giu phong cach tu nhien, thoai mai"""
+- Giu phong cach tu nhien, thoai mai
+
+XU LY THONG TIN CHUA RO RANG:
+- Neu nguoi dung tra loi "chua xac dinh", "chua biet", "khong co" cho mot truong nhat dinh, hoac thong tin thuc su khong the lam ro, ban HAY chap nhan gia tri la "Chưa xác định".
+- Khong hoi vong vo hoac ep buoc nguoi dung phai dua ra thong tin neu ho khong biet.
+- Dinh kem huong dan cho cac truong con thieu: "Neu ban khong ro, ban co the dien 'Chưa xác định'"."""
 
 
 def get_clarification_prompt(

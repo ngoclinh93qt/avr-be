@@ -5,6 +5,7 @@ to be accepted, or should be flagged for re-clarification.
 """
 
 import re
+import unicodedata
 from typing import Optional
 
 # Vietnamese vowels including tonal variants
@@ -27,6 +28,10 @@ def validate_field_answer(field_name: str, value: str) -> tuple[str, Optional[st
 
     # Skip validation for optional notes
     if field_name == "additional_notes":
+        return "confirmed", None
+
+    normalized_v = unicodedata.normalize("NFD", v).encode("ascii", "ignore").decode().lower().strip()
+    if normalized_v in ("chua xac dinh", "chua biet", "chua ro", "khong ro", "khong biet", "unknown"):
         return "confirmed", None
 
     # Too short (< 3 non-space chars)
