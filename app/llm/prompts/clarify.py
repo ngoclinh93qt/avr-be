@@ -85,6 +85,9 @@ def get_clarification_prompt(
         ]
         uncertain_section = "\nCAN LAM RO LAI:\n" + "\n".join(lines)
 
+    # Build the whitelist of allowed attribute_name values for the LLM
+    allowed_names_list = "\n".join(f'  "{m}"' for m in missing_elements)
+
     prompt = f"""THONG TIN DA THU THAP:
 {attrs_text if attrs_text else "Chua co thong tin nao."}
 {accepted_section}
@@ -104,13 +107,17 @@ Dua tren thong tin tren, hay tao cac cau hoi de thu thap thong tin con thieu.
 - Uu tien cac thong tin QUAN TRONG NHAT (toi da 4 truong).
 - Cau hoi phai cu the, tiep noi nguyen vong nguoi dung.
 
+TUYET DOI QUAN TRONG - "attribute_name" trong moi form_field PHAI la mot trong nhung gia tri chinh xac sau (copy nguyen, khong sua, khong them chu):
+{allowed_names_list}
+Moi form_field chi duoc dung dung mot gia tri tu danh sach tren. Khong duoc tu dat ten khac.
+
 HAY TRA LOI BANG DINH DANG JSON DUY NHAT NAY, KHONG THEM THE MARKDOWN:
 {{
     "message": "Noi chuyen huong de cap truong da ghi nhan (neu co) va nhung gi can lam ro them.",
     "form_fields": [
         {{
-            "attribute_name": "ten truong (VD: 'primary_endpoint')",
-            "question_label": "Nhan ngan gon (VD: 'Kết cục chính')",
+            "attribute_name": "copy chinh xac tu danh sach tren, VD: primary_endpoint",
+            "question_label": "Nhan hien thi bang tieng Viet (VD: 'Kết cục chính')",
             "description": "Mo ta / huong dan dien",
             "placeholder": "VD: Ty le tu vong sau 30 ngay..."
         }}
@@ -137,6 +144,19 @@ def _format_attributes(attrs: ExtractedAttributes) -> str:
         "design_type": "Thiet ke",
         "setting": "Dia diem",
         "duration": "Thoi gian",
+        "follow_up_duration": "Thoi gian theo doi",
+        "case_definition": "Dinh nghia ca benh",
+        "control_definition": "Dinh nghia nhom chung",
+        "matching_criteria": "Tieu chi ghep cap",
+        "reference_standard": "Tieu chuan vang",
+        "search_strategy": "Chien luoc tim kiem",
+        "databases": "Co so du lieu",
+        "data_collection_method": "Phuong phap thu thap du lieu",
+        "randomization_method": "Phuong phap ngau nhien",
+        "blinding": "Lam mu",
+        "data_source": "Nguon du lieu",
+        "inclusion_criteria": "Tieu chuan chon",
+        "exclusion_criteria": "Tieu chuan loai",
     }
 
     for key, display in display_names.items():

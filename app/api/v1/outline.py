@@ -42,7 +42,7 @@ async def generate_outline(
     tier, can_access = await supabase_service.check_user_tier(user_id)
     if not can_access:
         raise HTTPException(
-            status_code=403,
+            status_code=402,
             detail="Outline generation requires paid subscription"
         )
 

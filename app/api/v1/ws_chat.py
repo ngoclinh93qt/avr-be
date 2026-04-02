@@ -305,8 +305,19 @@ async def _process_chat_message(
     logger.info("[CHAT] existing_attrs before extraction: %s",
                 existing_attrs.model_dump(exclude_none=True) if existing_attrs else "None")
 
-    new_attrs = extract_attributes(user_message, existing_attrs) if user_message else ExtractedAttributes()
-    
+    if form_data:
+        # Form submission: use existing_attrs as base — do NOT run text extractor on the
+        # formatted summary (e.g. "- **Thời gian theo dõi**: ...") because rule-based
+        # patterns would corrupt fields with markdown artifacts.
+        new_attrs = existing_attrs.model_copy() if existing_attrs else ExtractedAttributes()
+        # Still extract from additional_notes if provided (natural language context)
+        additional_notes = (form_data.get("additional_notes") or "").strip()
+        if additional_notes:
+            extra = extract_attributes(additional_notes, existing_attrs)
+            new_attrs = merge_attributes(new_attrs, extra)
+    else:
+        new_attrs = extract_attributes(user_message, existing_attrs) if user_message else ExtractedAttributes()
+
     if form_data:
         for key, value in form_data.items():
             if hasattr(new_attrs, key) and value is not None and value.strip():
@@ -439,7 +450,30 @@ async def _process_chat_message(
                 import json
                 data = json.loads(content)
                 response_text = data.get("message", "Vui lòng hoàn thiện các thông tin sau:")
-                dynamic_form = data.get("form_fields", [])
+
+                # Validate attribute_names: only accept fields that map to real
+                # ExtractedAttributes fields AND are in the current missing_elements list.
+                # Remap/fill any missing element that the LLM forgot or named wrong.
+                _valid_attrs = set(ExtractedAttributes.model_fields.keys())
+                _missing_set = set(completeness.missing_elements)
+                _raw_form = data.get("form_fields", [])
+                _valid_form: list[dict] = []
+                _covered: set[str] = set()
+                for _fd in _raw_form:
+                    _attr = _fd.get("attribute_name", "")
+                    if _attr in _valid_attrs and _attr in _missing_set:
+                        _valid_form.append(_fd)
+                        _covered.add(_attr)
+                # Fallback: ensure every missing element has a form field
+                for _elem in completeness.missing_elements:
+                    if _elem not in _covered:
+                        _valid_form.append({
+                            "attribute_name": _elem,
+                            "question_label": FALLBACK_LABELS.get(_elem, _elem.replace("_", " ").title()),
+                            "description": FALLBACK_DESC.get(_elem, "Hãy mô tả chi tiết thông tin phần này."),
+                            "placeholder": "",
+                        })
+                dynamic_form = _valid_form
             except Exception as e:
                 logger.exception("LLM dynamic form generation failed")
                 response_text = "Để hoàn thiện thiết kế nghiên cứu, bạn vui lòng điền các thông tin còn thiếu vào form bên dưới nhé:"

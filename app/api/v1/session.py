@@ -140,6 +140,49 @@ async def list_sessions(
     ]
 
 
+@router.post("/{session_id}/advance-phase", response_model=SessionDetailResponse)
+async def advance_session_phase(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Advance a completed Phase 1 session to Phase 2."""
+    session = await supabase_service.get_research_session(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if session.get("phase") != Phase.PHASE1.value:
+        raise HTTPException(status_code=400, detail="Session must be in phase1 to advance")
+
+    if session.get("status") != SessionStatus.ABSTRACT_READY.value:
+        raise HTTPException(
+            status_code=400,
+            detail="Abstract must be generated before advancing to phase2. Complete Phase 1 first."
+        )
+
+    # Check user tier for Phase 2 (disabled for dev)
+    # tier, can_access = await supabase_service.check_user_tier(user_id)
+    # if not can_access:
+    #     raise HTTPException(
+    #         status_code=403,
+    #         detail="Phase 2 requires a paid subscription"
+    #     )
+
+    await supabase_service.update_research_session(
+        session_id,
+        {"phase": Phase.PHASE2.value}
+    )
+
+    updated = await supabase_service.get_research_session(session_id)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to fetch updated session")
+
+    return _session_to_response(updated)
+
+
 @router.delete("/{session_id}")
 async def delete_session(
     session_id: str,

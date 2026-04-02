@@ -254,6 +254,7 @@ async def generate_abstract(
                 open_access=j.get("open_access"),
                 abstract_limit=j.get("abstract_limit"),
                 citation_style=j.get("citation_style"),
+                quartile=j.get("quartile"),
                 similarity_score=j["similarity_score"],
             )
             for j in journals

@@ -4,11 +4,30 @@ This module implements R-08: Journal search via ChromaDB
 using sentence-transformers for embeddings.
 """
 
+import json
 import os
 from typing import Optional
 from pathlib import Path
 
 from app.config import get_settings
+
+# ─── Source JSON enrichment cache ─────────────────────────────────────────────
+_journal_source_cache: dict[str, dict] = {}
+
+
+def _get_journal_source_map() -> dict[str, dict]:
+    """Load journals_source.json once and cache by id."""
+    global _journal_source_cache
+    if not _journal_source_cache:
+        source_path = Path(__file__).parent.parent.parent / "data" / "journals_source.json"
+        if source_path.exists():
+            try:
+                with open(source_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    _journal_source_cache = {j["id"]: j for j in data}
+            except Exception:
+                pass
+    return _journal_source_cache
 
 # Lazy imports to avoid loading heavy libraries on startup
 _chroma_client = None
@@ -116,6 +135,13 @@ def search_journals(
 
                 if similarity >= min_score:
                     metadata = results["metadatas"][0][i] if results["metadatas"] else {}
+                    source = _get_journal_source_map().get(journal_id, {})
+                    word_limits = source.get("word_limits") or {}
+                    abstract_words = word_limits.get("abstract")
+                    # Fallback to ChromaDB metadata for fields not in source map
+                    open_access = source.get("open_access") or metadata.get("open_access")
+                    citation_style = source.get("citation_style") or metadata.get("citation_style")
+                    quartile = source.get("quartile") or metadata.get("quartile")
                     journals.append({
                         "journal_id": journal_id,
                         "name": metadata.get("name", ""),
@@ -123,6 +149,10 @@ def search_journals(
                         "impact_factor": metadata.get("impact_factor"),
                         "specialty": metadata.get("specialty"),
                         "publisher": metadata.get("publisher"),
+                        "open_access": open_access,
+                        "citation_style": citation_style,
+                        "quartile": quartile,
+                        "abstract_limit": f"≤ {abstract_words} từ" if abstract_words else None,
                         "similarity_score": round(similarity, 3),
                         "description": results["documents"][0][i] if results["documents"] else "",
                     })
@@ -154,6 +184,8 @@ def get_journal_by_id(journal_id: str) -> Optional[dict]:
 
         if result and result["ids"]:
             metadata = result["metadatas"][0] if result["metadatas"] else {}
+            wl_raw = metadata.get("word_limits")
+            sr_raw = metadata.get("section_requirements")
             return {
                 "journal_id": journal_id,
                 "name": metadata.get("name", ""),
@@ -161,8 +193,8 @@ def get_journal_by_id(journal_id: str) -> Optional[dict]:
                 "impact_factor": metadata.get("impact_factor"),
                 "specialty": metadata.get("specialty"),
                 "publisher": metadata.get("publisher"),
-                "word_limits": metadata.get("word_limits"),
-                "section_requirements": metadata.get("section_requirements", []),
+                "word_limits": json.loads(wl_raw) if isinstance(wl_raw, str) else wl_raw,
+                "section_requirements": json.loads(sr_raw) if isinstance(sr_raw, str) else (sr_raw or []),
                 "author_guidelines_url": metadata.get("author_guidelines_url"),
                 "description": result["documents"][0] if result["documents"] else "",
             }
@@ -246,15 +278,20 @@ def add_journals_batch(journals: list[dict]) -> int:
             # Generate embedding
             embedding = model.encode(description).tolist()
 
-            # Build metadata
+            # Build metadata (ChromaDB requires flat scalar values)
+            word_limits = journal.get("word_limits")
+            section_requirements = journal.get("section_requirements")
             meta = {
                 "name": name,
                 "issn": journal.get("issn"),
                 "impact_factor": journal.get("impact_factor"),
                 "specialty": journal.get("specialty"),
                 "publisher": journal.get("publisher"),
-                "word_limits": journal.get("word_limits"),
-                "section_requirements": journal.get("section_requirements"),
+                "open_access": journal.get("open_access"),
+                "citation_style": journal.get("citation_style"),
+                "quartile": journal.get("quartile"),
+                "word_limits": json.dumps(word_limits) if word_limits else None,
+                "section_requirements": json.dumps(section_requirements) if section_requirements else None,
                 "author_guidelines_url": journal.get("author_guidelines_url"),
             }
             # Remove None values

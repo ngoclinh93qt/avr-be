@@ -241,6 +241,7 @@ class JournalSuggestion(BaseModel):
     open_access: Optional[str] = None   # "Diamond OA" | "Hybrid OA" | "Subscription"
     abstract_limit: Optional[str] = None  # e.g. "≤ 250 từ"
     citation_style: Optional[str] = None  # e.g. "Vancouver"
+    quartile: Optional[str] = None       # "Q1" | "Q2" | "Q3" | "Q4"
     similarity_score: float
     reasoning: Optional[str] = None
 

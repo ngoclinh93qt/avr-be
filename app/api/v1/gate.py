@@ -45,7 +45,7 @@ async def run_gate_check(
     tier, can_access = await supabase_service.check_user_tier(user_id)
     if not can_access:
         raise HTTPException(
-            status_code=403,
+            status_code=402,
             detail="Gate check requires paid subscription"
         )
 

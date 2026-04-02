@@ -134,6 +134,11 @@ class SupabaseService:
         Returns:
             Tuple of (tier, can_access_paid)
         """
+        # Dev mode bypass
+        settings = get_settings()
+        if settings.app_env == "development":
+            return "paid", True
+
         profile = await self.get_profile(user_id)
         if not profile:
             return "free", False

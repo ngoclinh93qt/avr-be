@@ -83,7 +83,7 @@ async def require_paid_user(
     tier, can_access = await supabase_service.check_user_tier(user_id)
     if not can_access:
         raise HTTPException(
-            status_code=403,
+            status_code=402,
             detail="This feature requires a paid subscription"
         )
     return user_id

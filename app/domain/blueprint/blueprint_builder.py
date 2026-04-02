@@ -73,7 +73,7 @@ def build_blueprint(
         comparator=attr_dict.get("comparator"),
         primary_outcome=attr_dict.get("primary_endpoint") or "",
         secondary_outcomes=secondary_outcomes,
-        timeframe=attr_dict.get("duration"),
+        timeframe=attr_dict.get("follow_up_duration") or attr_dict.get("duration"),
 
         # Design
         design_type=final_design,
@@ -160,6 +160,10 @@ def _generate_warnings(attrs: dict, design_type: DesignType) -> list[str]:
 
     # Sample size warnings
     sample = attrs.get("sample_size")
+    try:
+        sample = int(sample) if sample is not None else None
+    except (ValueError, TypeError):
+        sample = None
     if sample:
         if design_type == DesignType.RCT and sample < 50:
             warnings.append(f"Co mau RCT nho (n={sample}). Can power analysis.")
