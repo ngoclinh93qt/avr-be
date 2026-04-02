@@ -32,7 +32,9 @@ def get_clarification_prompt(
     missing_elements: list[str],
     current_attributes: ExtractedAttributes,
     conversation_history: Optional[list[dict]] = None,
-    turn_number: int = 0
+    turn_number: int = 0,
+    accepted_fields: Optional[dict] = None,
+    uncertain_fields: Optional[list] = None,
 ) -> str:
     """
     Generate prompt for LLM to ask clarifying questions.
@@ -42,6 +44,8 @@ def get_clarification_prompt(
         current_attributes: Currently extracted attributes
         conversation_history: Previous conversation turns
         turn_number: Current turn number
+        accepted_fields: Dict of field_name -> value that were just confirmed this turn
+        uncertain_fields: List of (field_name, submitted_value, reason) that were unclear
 
     Returns:
         Prompt string for LLM
@@ -55,8 +59,36 @@ def get_clarification_prompt(
     # Format conversation history
     history_text = _format_history(conversation_history) if conversation_history else ""
 
+    # Build accepted / uncertain context sections
+    accepted_section = ""
+    if accepted_fields:
+        display_names = {
+            "population": "Đối tượng nghiên cứu", "sample_size": "Cỡ mẫu",
+            "primary_endpoint": "Kết cục chính", "intervention": "Can thiệp",
+            "comparator": "Nhóm chứng", "exposure": "Phơi nhiễm",
+            "follow_up_duration": "Thời gian theo dõi", "design_type": "Thiết kế nghiên cứu",
+        }
+        lines = [
+            f"- {display_names.get(k, k.replace('_', ' '))}: \"{v}\""
+            for k, v in accepted_fields.items() if v
+        ]
+        if lines:
+            accepted_section = (
+                f"\nVUA GHI NHAN ({len(lines)} truong trong luot nay):\n" + "\n".join(lines)
+            )
+
+    uncertain_section = ""
+    if uncertain_fields:
+        lines = [
+            f"- {f.replace('_', ' ')}: User nhap \"{v}\" — {r} (hay hoi lai cu the hon)"
+            for f, v, r in uncertain_fields
+        ]
+        uncertain_section = "\nCAN LAM RO LAI:\n" + "\n".join(lines)
+
     prompt = f"""THONG TIN DA THU THAP:
 {attrs_text if attrs_text else "Chua co thong tin nao."}
+{accepted_section}
+{uncertain_section}
 
 THONG TIN CON THIEU:
 {missing_text}
@@ -66,19 +98,21 @@ THONG TIN CON THIEU:
 LUOT HOI DAP: {turn_number + 1}
 
 NHIEM VU:
-Dua tren thong tin tren, hay suy luan va tao ra cac cau hoi de thu thap thong tin cho TUNG phan con thieu.
-- Uu tien cac thong tin QUAN TRONG NHAT truoc (toi da 4 truong)
-- Cau hoi phai cu the, tiep noi nguyen vong cua nguoi dung. (VD: neu ho da noi "tre em" thi hoi them "do tuoi cu the cua tre em la bao nhieu?").
+Dua tren thong tin tren, hay tao cac cau hoi de thu thap thong tin con thieu.
+- Neu co truong "VỪA GHI NHẬN", hay de cap trong message rang minh da ghi nhan duoc (VD: "Mình đã ghi nhận X câu trả lời...").
+- Neu co truong "CAN LAM RO LAI", hay dat cau hoi lai chi ve truong do.
+- Uu tien cac thong tin QUAN TRONG NHAT (toi da 4 truong).
+- Cau hoi phai cu the, tiep noi nguyen vong nguoi dung.
 
-HAY TRA LOI BANG DINH DANG JSON DUY NHAT NAY, KHONG THEM THE MARKDOWN HAY BLA BLA NAO KHAC:
+HAY TRA LOI BANG DINH DANG JSON DUY NHAT NAY, KHONG THEM THE MARKDOWN:
 {{
-    "message": "Cau noi chuyen huong nhe nhang (VD: 'De thiet ke duoc chinh xac hon, ban giup minh lam ro vai y sau nhe:')",
+    "message": "Noi chuyen huong de cap truong da ghi nhan (neu co) va nhung gi can lam ro them.",
     "form_fields": [
         {{
-            "attribute_name": "ten truong tu danh sach thieu (VD: 'population', 'sample_size')",
-            "question_label": "Nhan ngan gon cho truong (VD: 'Do tuoi benh nhi' hoac 'Nhom chung')",
-            "description": "Mo ta chi tiet hoac huong dan dien (VD: 'Vui long xac dinh do tuoi cu the cho nhom tre em trong nghien cuu cua mang.')",
-            "placeholder": "VD: Khong can thiep / Dung thuoc Placebo..."
+            "attribute_name": "ten truong (VD: 'primary_endpoint')",
+            "question_label": "Nhan ngan gon (VD: 'Kết cục chính')",
+            "description": "Mo ta / huong dan dien",
+            "placeholder": "VD: Ty le tu vong sau 30 ngay..."
         }}
     ]
 }}"""

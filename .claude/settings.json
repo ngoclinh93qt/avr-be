@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/linh/**)",
+      "Read(//usr/local/bin/**)",
+      "Bash(export PATH=\"$PATH:/Users/linh/google-cloud-sdk/bin\")",
+      "Bash(gcloud projects get-iam-policy avr-startup --flatten=\"bindings[].members\" --filter=\"bindings.members:ngoclinh93.qt@gmail.com\" --format=\"table\\(bindings.role\\)\")",
+      "Bash(CB_SA=\"744981633221@cloudbuild.gserviceaccount.com\")",
+      "Bash(PROJECT=\"avr-startup\")",
+      "Bash(gcloud projects add-iam-policy-binding $PROJECT --member=\"serviceAccount:$CB_SA\" --role=\"roles/run.admin\")",
+      "Bash(gcloud projects get-iam-policy avr-startup --flatten=\"bindings[].members\" --filter=\"bindings.role:roles/owner\" --format=\"table\\(bindings.members\\)\")"
+    ],
+    "additionalDirectories": [
+      "/Users/linh/linh/avr-fe/src/shared/types",
+      "/Users/linh/linh/avr-fe/src/features/research/hooks",
+      "/Users/linh/linh/avr-fe/src/features/research/pages"
+    ]
+  }
+}

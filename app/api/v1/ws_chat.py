@@ -18,6 +18,7 @@ from app.models.schemas import ExtractedAttributes
 from app.models.enums import ConversationState, SessionStatus, DesignType
 from app.llm import get_llm_client
 from app.llm.prompts.clarify import get_clarification_prompt, SYSTEM_PROMPT
+from app.domain.extraction.field_validator import validate_field_answer
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,10 @@ router = APIRouter(tags=["websocket"])
 # Default user for development (bypass auth)
 DEFAULT_USER_ID = "53262502-c85d-436f-98eb-66f518383813"  # admin@avr.com
 DEV_MODE = True  # Set to False in production
+
+# In-memory per-field attempt tracking: session_id -> {field_name -> attempt_count}
+# Cleared when session reaches COMPLETE or BLOCKED state.
+_field_attempt_counts: dict[str, dict[str, int]] = {}
 
 
 @router.websocket("/ws/chat")
@@ -316,8 +321,41 @@ async def _process_chat_message(
                 
     merged_attrs = merge_attributes(existing_attrs or ExtractedAttributes(), new_attrs)
 
+    # --- Per-field answer validation ---
+    # Categorise each submitted form field: confirmed (clear) vs uncertain (vague).
+    # Uncertain fields on their 1st attempt are cleared from merged_attrs so
+    # evaluate_completeness still marks them as missing and re-asks.
+    # On the 2nd+ attempt the field is force-accepted regardless of quality.
+    newly_confirmed: list[str] = []
+    newly_uncertain: list[tuple[str, str, str]] = []  # (field, raw_value, reason)
+
+    if form_data:
+        submitted = {
+            k: v.strip()
+            for k, v in form_data.items()
+            if k != "additional_notes" and v and v.strip()
+        }
+        session_counts = _field_attempt_counts.setdefault(session_id, {})
+        for field, value in submitted.items():
+            session_counts[field] = session_counts.get(field, 0) + 1
+            confidence, reason = validate_field_answer(field, value)
+            if confidence == "confirmed" or session_counts[field] >= 2:
+                newly_confirmed.append(field)
+            else:
+                newly_uncertain.append((field, value, reason or "Câu trả lời chưa rõ ràng."))
+                # Clear from merged_attrs so completeness flags it as still missing
+                if hasattr(merged_attrs, field):
+                    try:
+                        setattr(merged_attrs, field, None)
+                    except Exception:
+                        pass
+
     logger.info("[CHAT] merged_attrs after extraction: %s",
                 merged_attrs.model_dump(exclude_none=True))
+    if newly_confirmed:
+        logger.info("[CHAT] newly_confirmed fields: %s", newly_confirmed)
+    if newly_uncertain:
+        logger.info("[CHAT] newly_uncertain fields: %s", [(f, v) for f, v, _ in newly_uncertain])
 
     # Save user message
     await supabase_service.add_conversation_turn(
@@ -345,6 +383,8 @@ async def _process_chat_message(
     )
 
     # Generate response
+    dynamic_form: list[dict] = []  # always defined so done message can reference it
+
     if completeness.blocking_issues:
         response_text = format_blocking_message(completeness.blocking_issues)
         next_state = ConversationState.BLOCKED
@@ -363,18 +403,24 @@ async def _process_chat_message(
         next_state = ConversationState.CLARIFYING
         blueprint = None
 
-        dynamic_form = []
         if completeness.missing_elements:
+            # Build accepted/uncertain context dicts for the LLM prompt
+            accepted_fields_ctx = {
+                f: str(getattr(merged_attrs, f, "") or "")
+                for f in newly_confirmed
+                if getattr(merged_attrs, f, None)
+            }
             try:
                 llm = get_llm_client()
                 history_turns = await supabase_service.get_conversation_turns(session_id, limit=6)
-                from app.llm.prompts.clarify import get_clarification_prompt, SYSTEM_PROMPT
 
                 prompt = get_clarification_prompt(
                     missing_elements=completeness.missing_elements,
                     current_attributes=merged_attrs,
                     conversation_history=[{"role": t["role"], "content": t["content"]} for t in history_turns],
                     turn_number=turns_count,
+                    accepted_fields=accepted_fields_ctx or None,
+                    uncertain_fields=newly_uncertain or None,
                 )
 
                 response = await llm.complete(
@@ -383,7 +429,7 @@ async def _process_chat_message(
                     temperature=0.3,
                     max_tokens=1500,
                 )
-                
+
                 content = response.content.strip()
                 if content.startswith("```json"):
                     content = content[7:-3].strip()
@@ -397,7 +443,7 @@ async def _process_chat_message(
             except Exception as e:
                 logger.exception("LLM dynamic form generation failed")
                 response_text = "Để hoàn thiện thiết kế nghiên cứu, bạn vui lòng điền các thông tin còn thiếu vào form bên dưới nhé:"
-                
+
                 FALLBACK_LABELS = {
                     "population": "Đối tượng nghiên cứu", "sample_size": "Cỡ mẫu", "primary_endpoint": "Kết cục chính",
                     "intervention": "Can thiệp", "comparator": "Nhóm chứng", "exposure": "Phơi nhiễm",
@@ -413,11 +459,23 @@ async def _process_chat_message(
                     "exposure": "Nhóm yếu tố nguy cơ/phơi nhiễm bạn muốn đánh giá là gì? (Ví dụ: Tiếp xúc khói thuốc, làm việc ở hầm mỏ...)",
                 }
                 dynamic_form = [{
-                    "attribute_name": m, 
-                    "question_label": FALLBACK_LABELS.get(m, m.replace("_", " ").title()), 
-                    "description": FALLBACK_DESC.get(m, "Hãy mô tả chi tiết thông tin phần này."), 
+                    "attribute_name": m,
+                    "question_label": FALLBACK_LABELS.get(m, m.replace("_", " ").title()),
+                    "description": FALLBACK_DESC.get(m, "Hãy mô tả chi tiết thông tin phần này."),
                     "placeholder": ""
                 } for m in completeness.missing_elements]
+
+            # Augment retry fields with previous-answer metadata so the frontend
+            # can highlight them differently from genuinely new fields.
+            if newly_uncertain:
+                uncertain_map = {f: (v, r) for f, v, r in newly_uncertain}
+                for field_def in dynamic_form:
+                    fname = field_def.get("attribute_name")
+                    if fname in uncertain_map:
+                        prev_val, reason = uncertain_map[fname]
+                        field_def["is_retry"] = True
+                        field_def["previous_value"] = prev_val
+                        field_def["rejection_reason"] = reason
 
         # Always append the optional notes field if we are returning a form
         if dynamic_form:
@@ -458,6 +516,20 @@ async def _process_chat_message(
                 session_id, next_state.value, bool(blueprint))
     await supabase_service.update_research_session(session_id, session_updates)
 
+    # Cleanup in-memory attempt tracking when session is no longer clarifying
+    if next_state in (ConversationState.COMPLETE, ConversationState.BLOCKED):
+        _field_attempt_counts.pop(session_id, None)
+
+    # Build accepted/uncertain payloads for the frontend
+    accepted_payload = (
+        {f: str(getattr(merged_attrs, f, "") or "") for f in newly_confirmed if getattr(merged_attrs, f, None)}
+        if newly_confirmed else None
+    )
+    uncertain_payload = (
+        {f: {"value": v, "reason": r} for f, v, r in newly_uncertain}
+        if newly_uncertain else None
+    )
+
     # Send final state
     next_action = "generate_abstract" if completeness.is_complete else "continue"
     logger.info("[CHAT] ─── Done. next_action=%s  state=%s  blueprint=%s ───",
@@ -469,6 +541,9 @@ async def _process_chat_message(
         "state": next_state.value,
         "blueprint": blueprint.model_dump() if blueprint else None,
         "missing_elements": completeness.missing_elements,
+        "dynamic_form": dynamic_form,        # always send ([] when complete/blocked)
+        "accepted_fields": accepted_payload,
+        "uncertain_fields": uncertain_payload,
         "next_action": next_action,
     })
 
