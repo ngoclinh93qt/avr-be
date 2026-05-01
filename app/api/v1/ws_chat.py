@@ -26,7 +26,7 @@ router = APIRouter(tags=["websocket"])
 
 # Default user for development (bypass auth)
 DEFAULT_USER_ID = "53262502-c85d-436f-98eb-66f518383813"  # admin@avr.com
-DEV_MODE = True  # Set to False in production
+DEV_MODE = False
 
 # In-memory per-field attempt tracking: session_id -> {field_name -> attempt_count}
 # Cleared when session reaches COMPLETE or BLOCKED state.
