@@ -347,3 +347,195 @@ async def export_brief(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ─── Manuscript Outline Export ────────────────────────────────────────────────
+
+def _build_manuscript_outline_docx(session: dict, outline_data: dict) -> bytes:
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+    for section in doc.sections:
+        section.left_margin = Cm(2.5)
+        section.right_margin = Cm(2.5)
+        section.top_margin = Cm(2.5)
+        section.bottom_margin = Cm(2.5)
+
+    BLUE = RGBColor(0x25, 0x63, 0xEB)
+    GRAY = RGBColor(0x6B, 0x72, 0x80)
+    GREEN = RGBColor(0x16, 0xA3, 0x4A)
+
+    def h(text, level=1):
+        p = doc.add_heading(text, level=level)
+        for run in p.runs:
+            run.font.color.rgb = BLUE
+        return p
+
+    def para(text, bold=False, color=None, size=10, italic=False):
+        p = doc.add_paragraph()
+        run = p.add_run(text)
+        run.font.size = Pt(size)
+        run.font.bold = bold
+        run.font.italic = italic
+        if color:
+            run.font.color.rgb = color
+        p.paragraph_format.space_after = Pt(2)
+        return p
+
+    def bullet(text, level=0):
+        p = doc.add_paragraph(style="List Bullet")
+        run = p.add_run(text)
+        run.font.size = Pt(9)
+        p.paragraph_format.left_indent = Cm(0.5 * (level + 1))
+        p.paragraph_format.space_after = Pt(1)
+        return p
+
+    def checkbox(text):
+        p = doc.add_paragraph()
+        run = p.add_run(f"☐  {text}")
+        run.font.size = Pt(9)
+        p.paragraph_format.space_after = Pt(2)
+        return p
+
+    # ── Header ──
+    title_p = doc.add_paragraph()
+    run = title_p.add_run("📝 KHUNG SƯỜN MANUSCRIPT — AVR Research Mentor")
+    run.font.size = Pt(16)
+    run.font.bold = True
+    run.font.color.rgb = BLUE
+
+    journal = outline_data.get("target_journal", {})
+    if journal.get("name"):
+        para(f"Tạp chí: {journal['name']}", bold=True, size=11)
+        meta_parts = []
+        if journal.get("impact_factor"):
+            meta_parts.append(f"IF {journal['impact_factor']}")
+        if journal.get("word_limits"):
+            wl = journal["word_limits"]
+            if isinstance(wl, dict):
+                limits = " | ".join(f"{k}: {v}" for k, v in wl.items())
+                meta_parts.append(limits)
+        if meta_parts:
+            para(" · ".join(meta_parts), color=GRAY, size=9)
+
+    doc.add_paragraph()
+
+    # ── Title suggestion ──
+    title_suggestion = outline_data.get("title_suggestion")
+    if title_suggestion:
+        h("GỢI Ý TIÊU ĐỀ", level=1)
+        para(title_suggestion, bold=True, size=11)
+        para("⚠ Luôn kiểm tra yêu cầu về tiêu đề trước khi submit (viết tắt, độ dài, chữ hoa).", color=GRAY, size=8, italic=True)
+        doc.add_paragraph()
+
+    # ── Validated abstract ──
+    submitted_abstract = session.get("submitted_abstract") or session.get("estimated_abstract")
+    if submitted_abstract:
+        h("ABSTRACT", level=1)
+        para("(Sử dụng bản abstract đã pass Gate)", color=GREEN, size=9)
+        for line in submitted_abstract.split("\n"):
+            if line.strip():
+                para(line.strip(), size=9)
+        doc.add_paragraph()
+
+    # ── Outline sections ──
+    for section in outline_data.get("outline", []):
+        name = section.get("section_name", "")
+        wc = section.get("word_count_suggested", "")
+        key_points = section.get("key_points", [])
+        subsections = section.get("subsections", [])
+        tips = section.get("tips", [])
+
+        h(f"{name.upper()}  [{wc}]", level=1)
+
+        if key_points:
+            para("Nội dung cần có:", bold=True, size=9, color=GRAY)
+            for pt in key_points:
+                bullet(f"☐  {pt}")
+
+        if subsections:
+            para("Cấu trúc:", bold=True, size=9, color=GRAY)
+            for sub in subsections:
+                bullet(sub, level=1)
+
+        if tips:
+            para("Lưu ý khi viết:", bold=True, size=9, color=GRAY)
+            for tip in tips:
+                bullet(f"💡 {tip}")
+
+        doc.add_paragraph()
+
+    # ── Estimates ──
+    h("ƯỚC TÍNH", level=1)
+    para(f"Tổng từ: {outline_data.get('total_word_count', '—')}")
+    para(f"Hình/sơ đồ: ≤ {outline_data.get('estimated_figures', 1)}")
+    para(f"Bảng: ≤ {outline_data.get('estimated_tables', 2)}")
+    para(f"Tài liệu tham khảo: ~{outline_data.get('references_suggested', 30)}")
+    doc.add_paragraph()
+
+    # ── Submission checklist ──
+    checklist = outline_data.get("submission_checklist", [])
+    checklist_type = outline_data.get("checklist_type", "STROBE")
+    if checklist:
+        h(f"CHECKLIST NỘP BÀI ({checklist_type})", level=1)
+        for item in checklist:
+            checkbox(item)
+        doc.add_paragraph()
+
+    # ── Footer ──
+    footer = para(
+        f"Tài liệu này do AVR Research Mentor tạo tự động · Session: {session.get('id', '')[:8]} · "
+        "Luôn kiểm tra author guidelines của tạp chí trước khi submit.",
+        color=GRAY, size=8, italic=True,
+    )
+    footer.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+@router.get("/manuscript-outline")
+async def export_manuscript_outline(
+    session_id: str = Query(...),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Export Manuscript Outline as Word document.
+
+    GET /api/v1/export/manuscript-outline?session_id=...
+    """
+    session = await supabase_service.get_research_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    outline_raw = session.get("manuscript_outline")
+    if not outline_raw:
+        raise HTTPException(status_code=400, detail="Outline not yet generated. Complete Phase 3 first.")
+
+    try:
+        import json
+        outline_data = json.loads(outline_raw)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Outline data is invalid. Please regenerate the outline.")
+
+    try:
+        content = _build_manuscript_outline_docx(session, outline_data)
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename = f"AVR_Manuscript_Outline_{session_id[:8]}.docx"
+    except ImportError as e:
+        raise HTTPException(status_code=501, detail=f"Export library not installed: {e}. Run: pip install python-docx")
+    except Exception as e:
+        logger.exception("Manuscript outline export failed for session %s", session_id)
+        raise HTTPException(status_code=500, detail=f"Export failed: {e}")
+
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

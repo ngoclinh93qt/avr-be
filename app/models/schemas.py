@@ -349,8 +349,9 @@ class RevisionExplainResponse(BaseModel):
 class OutlineGenerateRequest(BaseModel):
     """Request to generate manuscript outline."""
     session_id: str
-    target_journal_id: str
-    validated_abstract: str = Field(min_length=50, max_length=5000)
+    target_journal_id: Optional[str] = None
+    validated_abstract: Optional[str] = Field(default=None, max_length=5000)
+    custom_instructions: Optional[str] = Field(default=None, max_length=2000)
 
 
 class JournalMetadata(BaseModel):
@@ -382,6 +383,9 @@ class OutlineGenerateResponse(BaseModel):
     estimated_figures: int = 0
     estimated_tables: int = 0
     references_suggested: int = 0
+    title_suggestion: Optional[str] = None
+    submission_checklist: list[str] = []
+    checklist_type: str = "STROBE"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

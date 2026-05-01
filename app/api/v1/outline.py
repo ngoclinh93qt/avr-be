@@ -8,14 +8,17 @@ from app.domain.gate.gate_engine import can_proceed_to_outline
 from app.models.schemas import (
     OutlineGenerateRequest, OutlineGenerateResponse,
     JournalMetadata, OutlineSection,
-    ResearchBlueprint
+    ResearchBlueprint, ExtractedAttributes
 )
 from app.models.enums import SessionStatus, GateResult
 from app.llm import get_llm_client
 from app.llm.prompts.manuscript_outline import (
     get_manuscript_outline_prompt,
     get_default_outline,
+    parse_llm_outline_response,
     calculate_total_word_count,
+    generate_title_suggestion,
+    get_submission_checklist,
     SYSTEM_PROMPT
 )
 from app.api.deps import get_current_user_id
@@ -60,6 +63,14 @@ async def generate_outline(
             detail="Gate check must PASS before generating outline"
         )
 
+    # Resolve validated_abstract from request or session
+    validated_abstract = (
+        request.validated_abstract
+        or session.get("submitted_abstract")
+        or session.get("estimated_abstract")
+        or ""
+    )
+
     # Get blueprint
     blueprint_data = session.get("blueprint")
     if not blueprint_data:
@@ -75,6 +86,15 @@ async def generate_outline(
             status_code=400,
             detail=f"Invalid blueprint: {str(e)}"
         )
+
+    # Get extracted attributes (richer per-field data from conversation)
+    extracted_attrs: ExtractedAttributes | None = None
+    attrs_data = session.get("extracted_attributes")
+    if attrs_data and isinstance(attrs_data, dict):
+        try:
+            extracted_attrs = ExtractedAttributes(**attrs_data)
+        except Exception:
+            pass
 
     # Get journal metadata
     journal_metadata = None
@@ -106,30 +126,37 @@ async def generate_outline(
         )
 
     # Generate outline
+    outline_sections = None
     try:
         llm = get_llm_client()
         prompt = get_manuscript_outline_prompt(
             blueprint=blueprint,
-            validated_abstract=request.validated_abstract,
+            extracted_attrs=extracted_attrs,
+            validated_abstract=validated_abstract,
             journal_metadata=journal_metadata,
+            custom_instructions=request.custom_instructions,
         )
 
-        response = await llm.complete(
+        llm_response = await llm.complete(
             prompt=prompt,
             system_prompt=SYSTEM_PROMPT,
-            temperature=0.7,
-            max_tokens=2000,
+            temperature=0.4,
+            max_tokens=4000,
         )
 
-        # Parse LLM response into structured outline
-        outline_text = response.content.strip()
-        outline_sections = _parse_outline_response(outline_text, blueprint)
+        # Parse the JSON output from LLM
+        parsed = parse_llm_outline_response(llm_response.content.strip())
+        if parsed:
+            outline_sections = [OutlineSection(**s) for s in parsed]
 
-    except Exception as e:
-        # Fallback to default outline
+    except Exception:
+        pass  # Fallback below
+
+    if not outline_sections:
+        # Fallback: blueprint-informed default outline (no LLM)
         outline_sections = [
             OutlineSection(**s)
-            for s in get_default_outline(blueprint, journal_metadata)
+            for s in get_default_outline(blueprint, journal_metadata, extracted_attrs)
         ]
 
     # Calculate totals
@@ -142,20 +169,15 @@ async def generate_outline(
     estimated_tables = _estimate_tables(blueprint)
     references_suggested = _estimate_references(blueprint)
 
-    # Save outline as text
-    outline_text = _format_outline_as_text(outline_sections)
-
-    # Update session
-    await supabase_service.update_research_session(
-        request.session_id,
-        {
-            "target_journal_id": request.target_journal_id,
-            "manuscript_outline": outline_text,
-            "status": SessionStatus.OUTLINE_READY.value,
-        }
+    # Generate title suggestion and submission checklist
+    title_suggestion = generate_title_suggestion(blueprint)
+    checklist_type = _get_checklist_type(blueprint)
+    submission_checklist = get_submission_checklist(
+        checklist_type,
+        journal_meta_response.name,
     )
 
-    return OutlineGenerateResponse(
+    response = OutlineGenerateResponse(
         session_id=request.session_id,
         target_journal=journal_meta_response,
         outline=outline_sections,
@@ -163,15 +185,45 @@ async def generate_outline(
         estimated_figures=estimated_figures,
         estimated_tables=estimated_tables,
         references_suggested=references_suggested,
+        title_suggestion=title_suggestion,
+        submission_checklist=submission_checklist,
+        checklist_type=checklist_type,
     )
 
+    # Store full structured response as JSON for frontend retrieval
+    import json
+    from app.models.enums import Phase
+    outline_json = json.dumps(response.model_dump(), default=str)
 
-def _parse_outline_response(text: str, blueprint: ResearchBlueprint) -> list[OutlineSection]:
-    """Parse LLM response into OutlineSection objects."""
-    # For now, return default outline if parsing fails
-    # A more sophisticated parser could be added later
-    default = get_default_outline(blueprint, None)
-    return [OutlineSection(**s) for s in default]
+    # Update session — advance phase to phase3
+    await supabase_service.update_research_session(
+        request.session_id,
+        {
+            "target_journal_id": request.target_journal_id,
+            "manuscript_outline": outline_json,
+            "status": SessionStatus.OUTLINE_READY.value,
+            "phase": Phase.PHASE3.value,
+        }
+    )
+
+    return response
+
+
+def _get_checklist_type(blueprint: ResearchBlueprint) -> str:
+    """Map design type to reporting checklist type."""
+    from app.models.enums import DesignType
+    mapping = {
+        DesignType.RCT: "CONSORT",
+        DesignType.QUASI_EXPERIMENTAL: "CONSORT",
+        DesignType.BEFORE_AFTER: "CONSORT",
+        DesignType.DIAGNOSTIC_ACCURACY: "STARD",
+        DesignType.SYSTEMATIC_REVIEW: "PRISMA",
+        DesignType.META_ANALYSIS: "PRISMA",
+        DesignType.SCOPING_REVIEW: "PRISMA",
+        DesignType.CASE_REPORT: "CARE",
+    }
+    return mapping.get(blueprint.design_type, "STROBE")
+
 
 
 def _estimate_figures(blueprint: ResearchBlueprint) -> int:
