@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # Provider-specific model overrides
     anthropic_model: Optional[str] = "claude-3-5-sonnet-20241022"
     openai_model: Optional[str] = "gpt-4o"
-    google_model: Optional[str] = "gemini-1.5-pro"
+    google_model: Optional[str] = "gemini-2.5-pro"
     openrouter_model: Optional[str] = "anthropic/claude-3.5-sonnet"
 
     # Supabase

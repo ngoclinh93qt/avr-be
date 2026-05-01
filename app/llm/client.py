@@ -445,7 +445,7 @@ class LLMClient:
         from google.genai import types
 
         client = genai.Client(api_key=self.settings.google_api_key)
-        model = model or self.settings.google_model or "gemini-2.0-flash"
+        model = model or self.settings.google_model or "gemini-2.5-pro"
 
         config = types.GenerateContentConfig(
             system_instruction=system_prompt if system_prompt else None,
@@ -482,7 +482,7 @@ class LLMClient:
         from google.genai import types
 
         client = genai.Client(api_key=self.settings.google_api_key)
-        model = model or self.settings.google_model or "gemini-2.0-flash"
+        model = model or self.settings.google_model or "gemini-2.5-pro"
         logger.info("[LLM STREAM] google model resolved → %s", model)
 
         config = types.GenerateContentConfig(
