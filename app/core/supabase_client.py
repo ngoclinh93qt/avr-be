@@ -128,6 +128,62 @@ class SupabaseService:
         await self.update_profile(user_id, {"runs_today": new_count})
         return new_count
 
+    async def get_token_quota(self, user_id: str) -> dict:
+        """Get current token quota for a user."""
+        profile = await self.get_profile(user_id)
+        if not profile:
+            settings = get_settings()
+            return {
+                "tokens_used_month": 0,
+                "token_limit_month": settings.free_tier_token_limit,
+                "token_reset_at": None,
+                "tier": "free",
+            }
+        return {
+            "tokens_used_month": profile.get("tokens_used_month", 0),
+            "token_limit_month": profile.get("token_limit_month", get_settings().free_tier_token_limit),
+            "token_reset_at": profile.get("token_reset_at"),
+            "tier": profile.get("tier", "free"),
+        }
+
+    async def check_token_quota(self, user_id: str) -> None:
+        """Raise HTTP 429 if user has exceeded their monthly token quota."""
+        settings = get_settings()
+        if settings.app_env == "development":
+            return
+
+        quota = await self.get_token_quota(user_id)
+        limit = quota["token_limit_month"]
+        used = quota["tokens_used_month"]
+        if limit > 0 and used >= limit:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "QUOTA_EXCEEDED",
+                    "message": "Đã hết token tháng này",
+                    "tokens_used": used,
+                    "token_limit": limit,
+                    "token_reset_at": quota["token_reset_at"],
+                },
+            )
+
+    async def increment_token_usage(self, user_id: str, tokens: int) -> dict:
+        """Atomically increment token usage. Returns updated quota."""
+        if tokens <= 0:
+            return {}
+        try:
+            admin = await self.get_admin()
+            response = await admin.rpc(
+                "increment_user_tokens",
+                {"p_user_id": user_id, "p_amount": tokens},
+            ).execute()
+            return response.data[0] if response.data else {}
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Failed to increment token usage: %s", e)
+            return {}
+
     async def check_user_tier(self, user_id: str) -> tuple[str, bool]:
         """Check user tier and if they can run paid features.
 

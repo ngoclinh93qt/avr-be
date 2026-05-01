@@ -21,7 +21,7 @@ from app.llm.prompts.reviewer_sim import (
     get_quick_feedback,
     SYSTEM_PROMPT
 )
-from app.api.deps import get_current_user_id
+from app.api.deps import get_current_user_id, check_token_quota
 
 router = APIRouter(prefix="/gate", tags=["gate"])
 
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/gate", tags=["gate"])
 @router.post("/run", response_model=GateRunResponse)
 async def run_gate_check(
     request: GateRunRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(check_token_quota),
 ):
     """Run submission gate check on abstract."""
     # Get session
@@ -115,6 +115,7 @@ async def run_gate_check(
             system_prompt=SYSTEM_PROMPT,
             temperature=0.7,
             max_tokens=1000,
+            user_id=user_id,
         )
         reviewer_sim = response.content.strip()
 

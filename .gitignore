@@ -63,3 +63,9 @@ data/*.json
 !data/.gitkeep
 logs/
 *.log
+
+# ChromaDB data
+app/data/chroma_journals/
+
+# Claude settings
+.claude/

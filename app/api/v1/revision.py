@@ -15,7 +15,7 @@ from app.llm.prompts.guided_revision import (
     format_revision_response,
     SYSTEM_PROMPT
 )
-from app.api.deps import get_current_user_id
+from app.api.deps import get_current_user_id, check_token_quota
 
 router = APIRouter(prefix="/revision", tags=["revision"])
 
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/revision", tags=["revision"])
 async def explain_violation(
     code: str,
     request: RevisionExplainRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(check_token_quota),
 ):
     """Get detailed explanation and guidance for a specific violation."""
     # Get session
@@ -67,6 +67,7 @@ async def explain_violation(
             system_prompt=SYSTEM_PROMPT,
             temperature=0.7,
             max_tokens=800,
+            user_id=user_id,
         )
 
         return RevisionExplainResponse(

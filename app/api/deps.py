@@ -87,3 +87,11 @@ async def require_paid_user(
             detail="This feature requires a paid subscription"
         )
     return user_id
+
+
+async def check_token_quota(
+    user_id: str = Depends(get_current_user_id),
+) -> str:
+    """Raise 429 if user has exceeded monthly token quota."""
+    await supabase_service.check_token_quota(user_id)
+    return user_id

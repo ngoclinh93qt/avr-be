@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, session, chat, abstract, gate, revision, outline, ws_chat, export
+from app.api.v1 import auth, session, chat, abstract, gate, revision, outline, ws_chat, export, account
 
 api_router = APIRouter()
 
@@ -29,6 +29,9 @@ api_router.include_router(outline.router, tags=["Outline"])
 
 # Export (Phase 1 Research Brief)
 api_router.include_router(export.router, tags=["Export"])
+
+# Account / quota
+api_router.include_router(account.router, tags=["Account"])
 
 # WebSocket
 api_router.include_router(ws_chat.router, tags=["WebSocket"])

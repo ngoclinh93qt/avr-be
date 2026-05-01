@@ -19,7 +19,7 @@ from app.models.schemas import (
 from app.models.enums import ConversationState, SessionStatus
 from app.llm import get_llm_client
 from app.llm.prompts.clarify import get_clarification_prompt, SYSTEM_PROMPT
-from app.api.deps import get_current_user_id
+from app.api.deps import get_current_user_id, check_token_quota
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 @router.post("/message", response_model=ChatMessageResponse)
 async def send_message(
     request: ChatMessageRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(check_token_quota),
 ):
     """Send a message in the conversation."""
     # Get session
@@ -121,6 +121,7 @@ async def send_message(
                 system_prompt=SYSTEM_PROMPT,
                 temperature=0.7,
                 max_tokens=500,
+                user_id=user_id,
             )
             response_message = llm_response.content
 

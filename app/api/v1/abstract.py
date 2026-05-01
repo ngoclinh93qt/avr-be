@@ -24,7 +24,7 @@ from app.llm.prompts.abstract_gen import (
     validate_generated_abstract,
     SYSTEM_PROMPT
 )
-from app.api.deps import get_current_user_id
+from app.api.deps import get_current_user_id, check_token_quota
 
 router = APIRouter(prefix="/abstract", tags=["abstract"])
 
@@ -70,7 +70,7 @@ def _build_novelty_commentary_prompt(count: int, papers: list, blueprint) -> str
     )
 
 
-async def _generate_novelty_commentary(count: int, papers: list, blueprint, llm) -> str:
+async def _generate_novelty_commentary(count: int, papers: list, blueprint, llm, user_id: str = None) -> str:
     """Generate a short novelty commentary using LLM (light call, ~200 tokens)."""
     try:
         prompt = _build_novelty_commentary_prompt(count, papers, blueprint)
@@ -79,6 +79,7 @@ async def _generate_novelty_commentary(count: int, papers: list, blueprint, llm)
             system_prompt=_NOVELTY_COMMENTARY_SYSTEM,
             temperature=0.5,
             max_tokens=250,
+            user_id=user_id,
         )
         return response.content.strip()
     except Exception:
@@ -108,7 +109,7 @@ async def _generate_novelty_commentary(count: int, papers: list, blueprint, llm)
 @router.post("/generate", response_model=AbstractGenerateResponse)
 async def generate_abstract(
     request: AbstractGenerateRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(check_token_quota),
 ):
     """Generate estimated abstract, novelty check, journal suggestions, and research roadmap."""
     # Get session
@@ -167,6 +168,7 @@ async def generate_abstract(
             system_prompt=SYSTEM_PROMPT,
             temperature=0.7,
             max_tokens=1500,
+            user_id=user_id,
         )
         estimated_abstract = response.content.strip()
         logger.info("[ABSTRACT] LLM abstract generated — %d chars", len(estimated_abstract))
@@ -211,6 +213,7 @@ async def generate_abstract(
             papers=pubmed_result.get("papers", []),
             blueprint=blueprint,
             llm=llm,
+            user_id=user_id,
         )
         logger.info("[ABSTRACT] Novelty commentary: %r", commentary[:100])
 

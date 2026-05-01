@@ -49,11 +49,13 @@ class LLMClient:
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
+        user_id: Optional[str] = None,
     ) -> LLMResponse:
         """
         Generate completion from LLM.
 
         Provider priority: configured default first, then cloud fallbacks.
+        Pass user_id to automatically track token usage after a successful call.
         """
         provider = self.settings.default_provider
 
@@ -62,6 +64,7 @@ class LLMClient:
             try:
                 resp = await self._call_local(prompt, system_prompt, model, temperature, max_tokens)
                 _log_complete_response(resp)
+                await self._track_usage(user_id, resp)
                 return resp
             except Exception as e:
                 logger.warning("Local LLM failed: %s, falling back to cloud...", e)
@@ -71,6 +74,7 @@ class LLMClient:
             try:
                 resp = await self._call_google(prompt, system_prompt, model, temperature, max_tokens)
                 _log_complete_response(resp)
+                await self._track_usage(user_id, resp)
                 return resp
             except Exception as e:
                 logger.warning("Google failed: %s, falling back...", e)
@@ -80,6 +84,7 @@ class LLMClient:
             try:
                 resp = await self._call_openrouter(prompt, system_prompt, model, temperature, max_tokens)
                 _log_complete_response(resp)
+                await self._track_usage(user_id, resp)
                 return resp
             except Exception as e:
                 logger.warning("OpenRouter failed: %s, falling back...", e)
@@ -89,6 +94,7 @@ class LLMClient:
             try:
                 resp = await self._call_anthropic(prompt, system_prompt, model, temperature, max_tokens)
                 _log_complete_response(resp)
+                await self._track_usage(user_id, resp)
                 return resp
             except Exception as e:
                 logger.warning("Anthropic failed: %s", e)
@@ -98,6 +104,7 @@ class LLMClient:
             try:
                 resp = await self._call_openai(prompt, system_prompt, model, temperature, max_tokens)
                 _log_complete_response(resp)
+                await self._track_usage(user_id, resp)
                 return resp
             except Exception as e:
                 logger.warning("OpenAI failed: %s", e)
@@ -107,11 +114,21 @@ class LLMClient:
             try:
                 resp = await self._call_google(prompt, system_prompt, model, temperature, max_tokens)
                 _log_complete_response(resp)
+                await self._track_usage(user_id, resp)
                 return resp
             except Exception as e:
                 logger.warning("Google fallback failed: %s", e)
 
         raise RuntimeError("No LLM provider available")
+
+    async def _track_usage(self, user_id: Optional[str], resp: LLMResponse) -> None:
+        """Track token usage for a user after a successful LLM call."""
+        if not user_id or not resp.usage:
+            return
+        tokens = (resp.usage.get("prompt_tokens") or 0) + (resp.usage.get("completion_tokens") or 0)
+        if tokens > 0:
+            from app.core.supabase_client import supabase_service
+            await supabase_service.increment_token_usage(user_id, tokens)
 
     async def stream(
         self,

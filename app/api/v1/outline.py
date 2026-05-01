@@ -21,7 +21,7 @@ from app.llm.prompts.manuscript_outline import (
     get_submission_checklist,
     SYSTEM_PROMPT
 )
-from app.api.deps import get_current_user_id
+from app.api.deps import get_current_user_id, check_token_quota
 
 router = APIRouter(prefix="/outline", tags=["outline"])
 
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/outline", tags=["outline"])
 @router.post("/generate", response_model=OutlineGenerateResponse)
 async def generate_outline(
     request: OutlineGenerateRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(check_token_quota),
 ):
     """Generate manuscript outline for a target journal."""
     # Get session
@@ -142,6 +142,7 @@ async def generate_outline(
             system_prompt=SYSTEM_PROMPT,
             temperature=0.4,
             max_tokens=4000,
+            user_id=user_id,
         )
 
         # Parse the JSON output from LLM

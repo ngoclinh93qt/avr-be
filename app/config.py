@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # Rate limiting
     free_tier_daily_limit: int = 3  # Abstracts per day for free users
 
+    # Token quota limits (per month)
+    free_tier_token_limit: int = 50_000
+    paid_tier_token_limit: int = 2_000_000
+
     class Config:
         env_file = ".env"
         extra = "ignore"
